@@ -2,7 +2,6 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
-import numpy as np
 from utils import (
     train_model, evaluate_model,
     generate_optimal_allocation, predict_from_uploaded_plan,
@@ -30,6 +29,17 @@ if uploaded_file:
     eval_metrics, eval_plot = evaluate_model(df_raw, df_pred)
     st.pyplot(eval_plot)
     st.dataframe(eval_metrics)
+
+st.subheader("📋 媒体別 最適化パラメータ（α・β）")
+
+df_params = pd.DataFrame({
+    "施策": model_info["columns"],
+    "α（飽和度）": np.round(model_info["alphas"], 4),
+    "β（広告効果の遅延）": np.round(model_info["betas"], 4)
+})
+
+st.dataframe(df_params)
+
 
     st.subheader("📊 各施策の貢献度・数式・グラフ")
     for i, col in enumerate(model_info["columns"]):
