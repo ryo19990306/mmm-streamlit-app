@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -26,98 +25,63 @@ if uploaded_file:
     st.info("🔄 モデル学習中...")
     model_info, df_pred = train_model(df_raw)
 
-    st.subheader("📈 モデル評価（実績 vs 予測）")
+    st.subheader("📈 実績 vs 予測 売上")
     eval_metrics, eval_plot = evaluate_model(df_raw, df_pred)
     st.pyplot(eval_plot)
     st.dataframe(eval_metrics)
 
-    
-if "model_info" in locals():
-if uploaded_file:
+    st.subheader("📋 媒体別 最適化パラメータ（α・β）")
+    df_params = pd.DataFrame({
+        "施策": model_info["columns"],
+        "α（飽和度）": np.round(model_info["alphas"], 4),
+        "β（広告効果の遅延）": np.round(model_info["betas"], 4)
+    })
+    st.dataframe(df_params)
+
     st.subheader("📊 各施策の貢献度・数式・グラフ")
     for i, col in enumerate(model_info["columns"]):
         alpha = model_info["alphas"][i]
         beta = model_info["betas"][i]
         coef = model_info["model"].coef_[i]
+
         st.markdown(f"### 🔹 {col}")
         st.latex(f"\\text{{貢献}} = (\\text{{Adstock}}(x \\times {beta:.2f}) + x)^{{{alpha:.2f}}} \\times {coef:.2f}")
+
         ad = apply_adstock(df_raw[col].values, beta)
         sat = saturation_transform(ad, alpha)
         contribution = np.array(sat) * coef
+
         fig, ax = plt.subplots(figsize=(8, 2))
         ax.plot(df_raw["Date"], contribution)
         ax.set_title(f"{col} の変換後貢献度")
         st.pyplot(fig)
 
-for i, col in enumerate(model_info["columns"]):
-    alpha = model_info["alphas"][i]
-    beta = model_info["betas"][i]
-    coef = model_info["model"].coef_[i]
+    # パターン選択（A/B）
+    st.subheader("🧩 パターン選択")
+    pattern = st.radio("予測パターンを選択してください", ["パターンA：予算と期間を指定", "パターンB：予算配分ファイルをアップロード"])
 
-    st.markdown(f"### 🔹 {col}")
-    st.latex(f"\\text{{貢献}} = (\\text{{Adstock}}(x \\times {beta:.2f}) + x)^{{{alpha:.2f}}} \\times {coef:.2f}")
-
-    ad = apply_adstock(df_raw[col].values, beta)
-    sat = saturation_transform(ad, alpha)
-    contribution = np.array(sat) * coef
-
-    fig, ax = plt.subplots(figsize=(8, 2))
-    ax.plot(df_raw["Date"], contribution)
-    ax.set_title(f"{col} の変換後貢献度")
-    st.pyplot(fig)
-
-
-    for i, col in enumerate(model_info["columns"]):
-        coef = model_info["model"].coef_[i]
-        alpha = model_info["alphas"][i]
-        beta = model_info["betas"][i]
-
-        st.markdown(f"### 🔹 {col}")
-        st.latex(f"\text{{貢献}} = (\text{{Adstock}}(x \times {beta:.2f}) + x)^{{{alpha:.2f}}} \times {coef:.2f}")
-
-        ad = apply_adstock(df_raw[col].values, beta)
-        sat = saturation_transform(ad, alpha)
-        contribution = np.array(sat) * coef
-
-        fig, ax = plt.subplots(figsize=(8, 2))
-        ax.plot(df_raw["Date"], contribution)
-        ax.set_title(f"{col} の売上貢献")
-        st.pyplot(fig)
-
-    st.markdown("---")
-    pattern = st.radio("🧭 分析パターンを選択してください", ["パターンA：予算と期間を選ぶ", "パターンB：将来予算をアップロード"])
-
-    if pattern == "パターンA：予算と期間を選ぶ":
-        st.subheader("💡 パターンA：最適予算配分からの売上予測")
-
-        budget = st.number_input("💰 予算（一円単位）", min_value=0, max_value=100000000, value=10000000, step=1000, format="%d")
+    if pattern == "パターンA：予算と期間を指定":
+        budget = st.number_input("📌 予算（万円）", min_value=1000, max_value=100000, value=10000, step=100)
         start_date = st.date_input("📅 予測開始日")
-        end_date = st.date_input("📅 予測終了日")
+        end_date = st.date_input("📅 終了日を予測")
 
         if st.button("🚀 シミュレーション実行"):
-            forecast_df, alloc_df, plot = generate_optimal_allocation(model_info, budget, start_date, end_date)
-            st.pyplot(plot)
+            forecast_df, alloc_df, fig = generate_optimal_allocation(model_info, budget, start_date, end_date)
+            st.success("✅ シミュレーション成功")
+            st.pyplot(fig)
             st.dataframe(forecast_df)
-            st.download_button("📥 予測結果CSVダウンロード", forecast_df.to_csv(index=False).encode("utf-8"),
-                               file_name="forecast_patternA.csv", mime="text/csv")
+            st.download_button("📥 売上予測をCSVでダウンロード", forecast_df.to_csv(index=False), file_name="forecast_patternA.csv", mime="text/csv")
 
-    else:
-        st.subheader("💡 パターンB：予算配分表からの売上予測")
+    elif pattern == "パターンB：予算配分ファイルをアップロード":
+        uploaded_plan = st.file_uploader("📤 予算配分ファイル（CSV）", type=["csv"], key="plan_upload")
 
-        plan_file = st.file_uploader("📤 将来予算の配分表をアップロード（CSVまたはExcel）", type=["csv", "xlsx"])
-        if plan_file:
-            if plan_file.name.endswith(".csv"):
-                df_plan = pd.read_csv(plan_file)
-            else:
-                df_plan = pd.read_excel(plan_file)
-
+        if uploaded_plan:
+            df_plan = pd.read_csv(uploaded_plan)
             st.dataframe(df_plan.head())
 
-            if st.button("🚀 予測実行（アップロード配分）"):
-                forecast_df, plot = predict_from_uploaded_plan(model_info, df_plan)
-                st.pyplot(plot)
+            if st.button("🚀 シミュレーション実行", key="run_patternB"):
+                forecast_df, fig = predict_from_uploaded_plan(model_info, df_plan)
+                st.success("✅ シミュレーション成功")
+                st.pyplot(fig)
                 st.dataframe(forecast_df)
-                st.download_button("📥 予測結果CSVダウンロード", forecast_df.to_csv(index=False).encode("utf-8"),
-                                   file_name="forecast_patternB.csv", mime="text/csv")
-else:
-    st.info("👈 左からRawデータファイルをアップロードしてください。")
+                st.download_button("📥 売上予測をCSVでダウンロード", forecast_df.to_csv(index=False), file_name="forecast_patternB.csv", mime="text/csv")
