@@ -1,4 +1,3 @@
-
 import pandas as pd
 import numpy as np
 import jpholiday
@@ -14,7 +13,7 @@ def apply_adstock(x, beta):
     result[0] = x[0]
     for t in range(1, len(x)):
         result[t] = x[t] + beta * result[t - 1]
-    return result
+    return result.tolist()
 
 # ▼ Saturation変換
 def saturation_transform(x, alpha):
@@ -38,7 +37,7 @@ def objective_alpha_beta(params, trainX, y, media_cols):
     pred = model.predict(X_all)
     return -r2_score(y, pred)
 
-# ▼ train_model関数
+# ▼ モデル学習：train_model()
 def train_model(df_raw):
     df = df_raw.copy()
     df.columns = df.columns.str.strip()
@@ -52,7 +51,7 @@ def train_model(df_raw):
     df = df.dropna(subset=["Date"])
     df["Date"] = pd.to_datetime(df["Date"])
 
-    # ▼ extra features
+    # extra features
     df["weekday"] = df["Date"].dt.weekday
     weekday_dummies = pd.get_dummies(df["weekday"], prefix="wd", drop_first=True)
     month_dummies = pd.get_dummies(df["Date"].dt.month, prefix="month", drop_first=True)
@@ -92,7 +91,12 @@ def train_model(df_raw):
     model = Ridge(alpha=1.0).fit(X_all, y)
     pred = model.predict(X_all)
 
-    df_pred = pd.DataFrame({"Date": df.loc[X.index, "Date"], "Actual_Sales": y, "Predicted_Sales": pred})
+    df_pred = pd.DataFrame({
+        "Date": df.loc[X.index, "Date"],
+        "Actual_Sales": y,
+        "Predicted_Sales": pred
+    })
+
     model_info = {
         "model": model,
         "alphas": alphas,
@@ -100,9 +104,10 @@ def train_model(df_raw):
         "columns": media_cols,
         "extra_cols": X.drop(columns=media_cols).columns.tolist()
     }
+
     return model_info, df_pred
 
-# ▼ モデル評価関数
+# ▼ モデル評価：evaluate_model()
 def evaluate_model(df_raw, df_pred):
     r2 = r2_score(df_pred["Actual_Sales"], df_pred["Predicted_Sales"])
     rmse = np.sqrt(mean_squared_error(df_pred["Actual_Sales"], df_pred["Predicted_Sales"]))
