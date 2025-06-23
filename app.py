@@ -41,7 +41,7 @@ if uploaded_file:
 
         ad = apply_adstock(df_raw[col].values, beta)
         sat = saturation_transform(ad, alpha)
-        contribution = sat * coef
+        contribution = np.array(sat) * coef
 
         fig, ax = plt.subplots(figsize=(8, 2))
         ax.plot(df_raw["Date"], contribution)
