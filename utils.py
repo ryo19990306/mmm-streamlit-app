@@ -18,7 +18,7 @@ def apply_adstock(x, beta):
 
 # ▼ Saturation変換
 def saturation_transform(x, alpha):
-    return np.power(np.maximum(x, 0), alpha)
+    return [max(i, 0)**alpha for i in x]
 
 # ▼ 最適化目的関数（R²最大化）
 def objective_alpha_beta(params, trainX, y, media_cols):
