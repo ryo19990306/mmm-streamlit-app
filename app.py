@@ -38,7 +38,7 @@ if uploaded_file:
     })
     st.dataframe(df_params)
 
-    st.subheader("📊 各施策の貢献度・数式・グラフ")
+    st.subheader("📊 各施策の関数構造グラフ（Adstock + Saturation）")
     for i, col in enumerate(model_info["columns"]):
         alpha = model_info["alphas"][i]
         beta = model_info["betas"][i]
@@ -47,13 +47,15 @@ if uploaded_file:
         st.markdown(f"### 🔹 {col}")
         st.latex(f"\\text{{貢献}} = ( {col}(t-1) \\times {beta:.3f} + \\text{{Spent}}(t) )^{{{alpha:.3f}}} \\times {coef:.3f}")
 
-        ad = apply_adstock(df_raw[col].values, beta)
-        sat = saturation_transform(ad, alpha)
-        contribution = np.array(sat) * coef
+        # ▼ 関数そのものの可視化
+        x_vals = np.linspace(0, 20, 100)
+        adstock_vals = x_vals  # Adstock後と仮定
+        sat_vals = np.power(np.maximum(adstock_vals, 0), alpha)
+        contribution_vals = sat_vals * coef
 
-        fig, ax = plt.subplots(figsize=(8, 2))
-        ax.plot(df_raw["Date"], contribution)
-        ax.set_title(f"{col} の変換後貢献度")
+        fig, ax = plt.subplots(figsize=(6, 2))
+        ax.plot(x_vals, contribution_vals)
+        ax.set_title(f"{col}  (α={alpha:.3f}, β={beta:.3f})")
         st.pyplot(fig)
 
     # パターン選択（A/B）
