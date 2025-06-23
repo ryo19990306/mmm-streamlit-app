@@ -33,9 +33,21 @@ if uploaded_file:
 
     
 if "model_info" in locals():
-
 if uploaded_file:
     st.subheader("📊 各施策の貢献度・数式・グラフ")
+    for i, col in enumerate(model_info["columns"]):
+        alpha = model_info["alphas"][i]
+        beta = model_info["betas"][i]
+        coef = model_info["model"].coef_[i]
+        st.markdown(f"### 🔹 {col}")
+        st.latex(f"\\text{{貢献}} = (\\text{{Adstock}}(x \\times {beta:.2f}) + x)^{{{alpha:.2f}}} \\times {coef:.2f}")
+        ad = apply_adstock(df_raw[col].values, beta)
+        sat = saturation_transform(ad, alpha)
+        contribution = np.array(sat) * coef
+        fig, ax = plt.subplots(figsize=(8, 2))
+        ax.plot(df_raw["Date"], contribution)
+        ax.set_title(f"{col} の変換後貢献度")
+        st.pyplot(fig)
 
 for i, col in enumerate(model_info["columns"]):
     alpha = model_info["alphas"][i]
