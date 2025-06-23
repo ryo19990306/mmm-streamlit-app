@@ -45,7 +45,7 @@ if uploaded_file:
         coef = model_info["model"].coef_[i]
 
         st.markdown(f"### 🔹 {col}")
-        st.latex(f"\\text{{貢献}} = (\\text{{Adstock}}(x \\times {beta:.2f}) + x)^{{{alpha:.2f}}} \\times {coef:.2f}")
+        st.latex(f"\\text{{貢献}} = ( {col}(t-1) \\times {beta:.3f} + \\text{{Spent}}(t) )^{{{alpha:.3f}}} \\times {coef:.3f}")
 
         ad = apply_adstock(df_raw[col].values, beta)
         sat = saturation_transform(ad, alpha)
