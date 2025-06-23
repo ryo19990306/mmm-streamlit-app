@@ -42,10 +42,10 @@ st.dataframe(df_params)
 
 
 st.subheader("📊 各施策の貢献度・数式・グラフ")
-    for i, col in enumerate(model_info["columns"]):
-        coef = model_info["model"].coef_[i]
-        alpha = model_info["alphas"][i]
-        beta = model_info["betas"][i]
+for i, col in enumerate(model_info["columns"]):
+coef = model_info["model"].coef_[i]
+alpha = model_info["alphas"][i]
+beta = model_info["betas"][i]
 
         st.markdown(f"### 🔹 {col}")
         st.latex(f"\text{{貢献}} = (\text{{Adstock}}(x \times {beta:.2f}) + x)^{{{alpha:.2f}}} \times {coef:.2f}")
