@@ -2,6 +2,7 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
+import numpy as np
 from utils import (
     train_model, evaluate_model,
     generate_optimal_allocation, predict_from_uploaded_plan,
