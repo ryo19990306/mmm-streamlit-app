@@ -33,6 +33,8 @@ if uploaded_file:
 
     
 if "model_info" in locals():
+
+if uploaded_file:
     st.subheader("📊 各施策の貢献度・数式・グラフ")
 
 for i, col in enumerate(model_info["columns"]):
