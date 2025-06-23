@@ -1,6 +1,7 @@
 
 import streamlit as st
 import pandas as pd
+import numpy as np
 import matplotlib.pyplot as plt
 from utils import (
     train_model, evaluate_model,
@@ -31,7 +32,8 @@ if uploaded_file:
     st.dataframe(eval_metrics)
 
     
-st.subheader("📊 各施策の貢献度・数式・グラフ")
+if "model_info" in locals():
+    st.subheader("📊 各施策の貢献度・数式・グラフ")
 
 for i, col in enumerate(model_info["columns"]):
     alpha = model_info["alphas"][i]
