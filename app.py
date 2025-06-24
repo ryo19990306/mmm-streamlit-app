@@ -1,8 +1,8 @@
-#更新用コメント
 import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 from utils import (
     train_model, evaluate_model,
     generate_optimal_allocation, predict_from_uploaded_plan,
@@ -44,14 +44,16 @@ if uploaded_file:
     for i, col in enumerate(model_info["columns"]):
         alpha = max(0.05, min(model_info["alphas"][i], 0.95))
         beta = max(0.05, min(model_info["betas"][i], 0.95))
-        max_cost = df_raw[col].dropna().max() if col in df_raw.columns else 1000
+        max_raw = df_raw[col].dropna().max() if col in df_raw.columns else 0
+        max_cost = max_raw + 1_000_000
         cost_vals = np.linspace(0, max_cost, 100)
         adstock_vals = apply_adstock(cost_vals, beta)
         sat_vals = saturation_transform(adstock_vals, alpha)
         ax1.plot(cost_vals, sat_vals, label=f"{col} (α={alpha:.2f}, β={beta:.2f})")
     ax1.set_title("各施策の反応性カーブ（Adstock → Saturation のみ）")
-    ax1.set_xlabel("コスト（実測または仮想）")
+    ax1.set_xlabel("コスト（円）")
     ax1.set_ylabel("反応値（スケーリングなし）")
+    ax1.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: f"¥{int(x):,}"))
     ax1.legend()
     st.pyplot(fig1)
 
@@ -61,15 +63,17 @@ if uploaded_file:
         alpha = max(0.05, min(model_info["alphas"][i], 0.95))
         beta = max(0.05, min(model_info["betas"][i], 0.95))
         coef = model_info["model"].coef_[i]
-        max_cost = df_raw[col].dropna().max() if col in df_raw.columns else 1000
+        max_raw = df_raw[col].dropna().max() if col in df_raw.columns else 0
+        max_cost = max_raw + 1_000_000
         cost_vals = np.linspace(0, max_cost, 100)
         adstock_vals = apply_adstock(cost_vals, beta)
         sat_vals = saturation_transform(adstock_vals, alpha)
         y_vals = np.array(sat_vals) * coef
         ax2.plot(cost_vals, y_vals, label=f"{col} (α={alpha:.2f}, β={beta:.2f})")
     ax2.set_title("各施策の関数構造（反応 × 回帰係数）")
-    ax2.set_xlabel("コスト（実測または仮想）")
+    ax2.set_xlabel("コスト（円）")
     ax2.set_ylabel("貢献値（スケーリング済）")
+    ax2.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: f"¥{int(x):,}"))
     ax2.legend()
     st.pyplot(fig2)
 
@@ -79,7 +83,7 @@ if uploaded_file:
         beta = max(0.05, min(model_info["betas"][i], 0.95))
         coef = model_info["model"].coef_[i]
         st.markdown(f"### 🔹 {col}")
-        st.latex(f"\\text{{貢献}} = ( {col}(t-1) \\times {beta:.3f} + \\text{{Spent}}(t) )^{{{alpha:.3f}}} \\times {coef:.3f}")
+        st.latex(f"\text{{貢献}} = ( {col}(t-1) \times {beta:.3f} + \text{{Spent}}(t) )^{{{alpha:.3f}}} \times {coef:.3f}")
 
     st.subheader("🧩 パターン選択")
     pattern = st.radio("予測パターンを選択してください", ["パターンA：予算と期間を指定", "パターンB：予算配分ファイルをアップロード"])
