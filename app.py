@@ -44,8 +44,8 @@ if uploaded_file:
     fig, ax = plt.subplots(figsize=(8, 4))
 
     for i, col in enumerate(model_info["columns"]):
-        alpha = max(0.1, min(model_info["alphas"][i], 0.9))
-        beta = max(0.1, min(model_info["betas"][i], 0.9))
+        alpha = max(0.05, min(model_info["alphas"][i], 0.95))
+        beta = max(0.05, min(model_info["betas"][i], 0.95))
         coef = model_info["model"].coef_[i]
 
         adstock_vals = x_vals  # 仮想Adstock値

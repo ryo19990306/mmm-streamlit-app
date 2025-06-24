@@ -67,7 +67,7 @@ def train_model(df_raw):
 
     n_media = len(media_cols)
     init_params = [0.5] * n_media * 2
-    bounds = [(0.01, 1.0)] * n_media * 2
+    bounds = [(0.05, 0.95)] * n_media * 2
 
     res = minimize(
         objective_alpha_beta,
