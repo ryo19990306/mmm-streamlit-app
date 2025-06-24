@@ -1,4 +1,3 @@
-# force update to clear streamlit cache
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -40,45 +39,44 @@ if uploaded_file:
     st.dataframe(df_params)
 
     st.subheader("📊 各施策の反応性グラフ（Adstock + Saturation のみ）")
-
-    x_vals = np.linspace(0, 20, 100)
     fig1, ax1 = plt.subplots(figsize=(8, 4))
-
     for i, col in enumerate(model_info["columns"]):
-        alpha = max(0.05, min(model_info["alphas"][i], 0.95))  # ✅ 修正済み
-        sat_vals = np.power(np.maximum(x_vals, 0), alpha)
-        ax1.plot(x_vals, sat_vals, label=f"{col} (α={alpha:.2f})")
-
-    ax1.set_title("各施策の飽和反応カーブ（Saturation のみ）")
+        alpha = max(0.05, min(model_info["alphas"][i], 0.95))
+        beta = max(0.05, min(model_info["betas"][i], 0.95))
+        max_cost = df_raw[col].dropna().max() if col in df_raw.columns else 1000
+        cost_vals = np.linspace(0, max_cost, 100)
+        adstock_vals = apply_adstock(cost_vals, beta)
+        sat_vals = saturation_transform(adstock_vals, alpha)
+        ax1.plot(cost_vals, sat_vals, label=f"{col} (α={alpha:.2f}, β={beta:.2f})")
+    ax1.set_title("各施策の反応性カーブ（Adstock → Saturation のみ）")
+    ax1.set_xlabel("コスト（実測または仮想）")
+    ax1.set_ylabel("反応値（スケーリングなし）")
     ax1.legend()
     st.pyplot(fig1)
 
-    st.subheader("📊 各施策の関数構造グラフ（Adstock + Saturation）")
-
+    st.subheader("📊 各施策の関数構造グラフ（Adstock + Saturation × 回帰係数）")
     fig2, ax2 = plt.subplots(figsize=(8, 4))
-
     for i, col in enumerate(model_info["columns"]):
-        alpha = max(0.05, min(model_info["alphas"][i], 0.95))  # ✅ 修正済み
-        beta = max(0.05, min(model_info["betas"][i], 0.95))    # ✅ 修正済み
+        alpha = max(0.05, min(model_info["alphas"][i], 0.95))
+        beta = max(0.05, min(model_info["betas"][i], 0.95))
         coef = model_info["model"].coef_[i]
-
-        adstock_vals = x_vals
-        sat_vals = np.power(np.maximum(adstock_vals, 0), alpha)
-        y_vals = sat_vals * coef
-
-        ax2.plot(x_vals, y_vals, label=f"{col} (α={alpha:.2f}, β={beta:.2f})")
-
-    ax2.set_title("各施策の反応曲線（係数込み）")
+        max_cost = df_raw[col].dropna().max() if col in df_raw.columns else 1000
+        cost_vals = np.linspace(0, max_cost, 100)
+        adstock_vals = apply_adstock(cost_vals, beta)
+        sat_vals = saturation_transform(adstock_vals, alpha)
+        y_vals = np.array(sat_vals) * coef
+        ax2.plot(cost_vals, y_vals, label=f"{col} (α={alpha:.2f}, β={beta:.2f})")
+    ax2.set_title("各施策の関数構造（反応 × 回帰係数）")
+    ax2.set_xlabel("コスト（実測または仮想）")
+    ax2.set_ylabel("貢献値（スケーリング済）")
     ax2.legend()
     st.pyplot(fig2)
 
     st.subheader("📐 各施策の数式")
-
     for i, col in enumerate(model_info["columns"]):
-        alpha = max(0.05, min(model_info["alphas"][i], 0.95))  # ✅ 修正済み
-        beta = max(0.05, min(model_info["betas"][i], 0.95))    # ✅ 修正済み
+        alpha = max(0.05, min(model_info["alphas"][i], 0.95))
+        beta = max(0.05, min(model_info["betas"][i], 0.95))
         coef = model_info["model"].coef_[i]
-
         st.markdown(f"### 🔹 {col}")
         st.latex(f"\\text{{貢献}} = ( {col}(t-1) \\times {beta:.3f} + \\text{{Spent}}(t) )^{{{alpha:.3f}}} \\times {coef:.3f}")
 
@@ -89,7 +87,6 @@ if uploaded_file:
         budget = st.number_input("📌 予算（万円）", min_value=1000, max_value=100000, value=10000, step=100)
         start_date = st.date_input("📅 予測開始日")
         end_date = st.date_input("📅 終了日を予測")
-
         if st.button("🚀 シミュレーション実行"):
             forecast_df, alloc_df, fig = generate_optimal_allocation(model_info, budget, start_date, end_date)
             st.success("✅ シミュレーション成功")
@@ -99,11 +96,9 @@ if uploaded_file:
 
     elif pattern == "パターンB：予算配分ファイルをアップロード":
         uploaded_plan = st.file_uploader("📤 予算配分ファイル（CSV）", type=["csv"], key="plan_upload")
-
         if uploaded_plan is not None:
             df_plan = pd.read_csv(uploaded_plan)
             st.dataframe(df_plan.head())
-
             if st.button("🚀 シミュレーション実行", key="run_patternB"):
                 forecast_df, fig = predict_from_uploaded_plan(model_info, df_plan)
                 st.success("✅ シミュレーション成功")
