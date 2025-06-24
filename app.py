@@ -38,27 +38,43 @@ if uploaded_file:
     })
     st.dataframe(df_params)
 
-    st.subheader("📊 各施策の関数構造グラフ（Adstock + Saturation）")
+    # ▼ NEW：Adstock + Saturation のみの反応カーブ
+    st.subheader("📊 各施策の反応性グラフ（Adstock + Saturation のみ）")
 
     x_vals = np.linspace(0, 20, 100)
-    fig, ax = plt.subplots(figsize=(8, 4))
+    fig1, ax1 = plt.subplots(figsize=(8, 4))
 
     for i, col in enumerate(model_info["columns"]):
-        alpha = max(0.05, min(model_info["alphas"][i], 0.95))
-        beta = max(0.05, min(model_info["betas"][i], 0.95))
+        alpha = max(0.1, min(model_info["alphas"][i], 0.9))
+        sat_vals = np.power(np.maximum(x_vals, 0), alpha)
+        ax1.plot(x_vals, sat_vals, label=f"{col} (α={alpha:.2f})")
+
+    ax1.set_title("各施策の飽和反応カーブ（Saturation のみ）")
+    ax1.legend()
+    st.pyplot(fig1)
+
+    # ▼ 既存：Adstock + Saturation + 回帰係数 のグラフと数式
+    st.subheader("📊 各施策の関数構造グラフ（Adstock + Saturation）")
+
+    fig2, ax2 = plt.subplots(figsize=(8, 4))
+
+    for i, col in enumerate(model_info["columns"]):
+        alpha = max(0.1, min(model_info["alphas"][i], 0.9))
+        beta = max(0.1, min(model_info["betas"][i], 0.9))
         coef = model_info["model"].coef_[i]
 
-        adstock_vals = x_vals  # 仮想Adstock値
+        adstock_vals = x_vals  # 仮想的なAdstock値
         sat_vals = np.power(np.maximum(adstock_vals, 0), alpha)
         y_vals = sat_vals * coef
 
-        ax.plot(x_vals, y_vals, label=f"{col} (α={alpha:.2f}, β={beta:.2f})")
+        ax2.plot(x_vals, y_vals, label=f"{col} (α={alpha:.2f}, β={beta:.2f})")
 
-    ax.set_title("各施策の反応曲線")
-    ax.legend()
-    st.pyplot(fig)
+    ax2.set_title("各施策の反応曲線（係数込み）")
+    ax2.legend()
+    st.pyplot(fig2)
 
     st.subheader("📐 各施策の数式")
+
     for i, col in enumerate(model_info["columns"]):
         alpha = max(0.1, min(model_info["alphas"][i], 0.9))
         beta = max(0.1, min(model_info["betas"][i], 0.9))
