@@ -9,7 +9,7 @@ from utils import (
 )
 
 st.set_page_config(page_title="MMM予測シミュレーション", layout="wide")
-st.title("📊 MMM予算シミュレーション（パターン選択＋貢献度表示対応）")
+st.title("📊 MMM予算シミュレーション（パターン選択＋関数可視化対応）")
 
 uploaded_file = st.file_uploader("📤 Rawデータをアップロード（CSVまたはExcel）", type=["csv", "xlsx"])
 
@@ -39,26 +39,34 @@ if uploaded_file:
     st.dataframe(df_params)
 
     st.subheader("📊 各施策の関数構造グラフ（Adstock + Saturation）")
+
+    x_vals = np.linspace(0, 20, 100)
+    fig, ax = plt.subplots(figsize=(8, 4))
+
     for i, col in enumerate(model_info["columns"]):
-        alpha = model_info["alphas"][i]
-        beta = model_info["betas"][i]
+        alpha = max(0.1, min(model_info["alphas"][i], 0.9))
+        beta = max(0.1, min(model_info["betas"][i], 0.9))
+        coef = model_info["model"].coef_[i]
+
+        adstock_vals = x_vals  # 仮想Adstock値
+        sat_vals = np.power(np.maximum(adstock_vals, 0), alpha)
+        y_vals = sat_vals * coef
+
+        ax.plot(x_vals, y_vals, label=f"{col} (α={alpha:.2f}, β={beta:.2f})")
+
+    ax.set_title("各施策の反応曲線")
+    ax.legend()
+    st.pyplot(fig)
+
+    st.subheader("📐 各施策の数式")
+    for i, col in enumerate(model_info["columns"]):
+        alpha = max(0.1, min(model_info["alphas"][i], 0.9))
+        beta = max(0.1, min(model_info["betas"][i], 0.9))
         coef = model_info["model"].coef_[i]
 
         st.markdown(f"### 🔹 {col}")
         st.latex(f"\\text{{貢献}} = ( {col}(t-1) \\times {beta:.3f} + \\text{{Spent}}(t) )^{{{alpha:.3f}}} \\times {coef:.3f}")
 
-        # ▼ 関数そのものの可視化
-        x_vals = np.linspace(0, 20, 100)
-        adstock_vals = x_vals  # Adstock後と仮定
-        sat_vals = np.power(np.maximum(adstock_vals, 0), alpha)
-        contribution_vals = sat_vals * coef
-
-        fig, ax = plt.subplots(figsize=(6, 2))
-        ax.plot(x_vals, contribution_vals)
-        ax.set_title(f"{col}  (α={alpha:.3f}, β={beta:.3f})")
-        st.pyplot(fig)
-
-    # パターン選択（A/B）
     st.subheader("🧩 パターン選択")
     pattern = st.radio("予測パターンを選択してください", ["パターンA：予算と期間を指定", "パターンB：予算配分ファイルをアップロード"])
 
