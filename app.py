@@ -1,8 +1,9 @@
-#更新用
 import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
+plt.rcParams['font.family'] = 'IPAexGothic'
 import matplotlib.ticker as ticker
 from utils import (
     train_model, evaluate_model,
@@ -53,6 +54,8 @@ if uploaded_file:
         ax1.plot(cost_vals, sat_vals, label=f"{col} (α={alpha:.2f}, β={beta:.2f})")
     ax1.set_title("各施策の反応性カーブ（Adstock → Saturation のみ）")
     ax1.set_xlabel("コスト（円）")
+    ax1.ticklabel_format(style="plain", axis="x")
+    ax1.get_xaxis().set_major_formatter(ticker.FuncFormatter(lambda x, _: f"¥{x:,.0f}"))
     ax1.set_ylabel("反応値（スケーリングなし）")
     ax1.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: f"¥{int(x):,}"))
     ax1.legend()
@@ -73,6 +76,8 @@ if uploaded_file:
         ax2.plot(cost_vals, y_vals, label=f"{col} (α={alpha:.2f}, β={beta:.2f})")
     ax2.set_title("各施策の関数構造（反応 × 回帰係数）")
     ax2.set_xlabel("コスト（円）")
+    ax2.ticklabel_format(style="plain", axis="x")
+    ax2.get_xaxis().set_major_formatter(ticker.FuncFormatter(lambda x, _: f"¥{x:,.0f}"))
     ax2.set_ylabel("貢献値（スケーリング済）")
     ax2.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: f"¥{int(x):,}"))
     ax2.legend()
