@@ -48,15 +48,15 @@ if uploaded_file:
         beta = max(0.05, min(model_info["betas"][i], 0.95))
         max_raw = df_raw[col].dropna().max() if col in df_raw.columns else 0
         max_cost = max_raw + 1_000_000
-        cost_vals = np.linspace(0, max_cost, 100)
+        cost_vals = np.linspace(0, max_cost, 300)
         adstock_vals = apply_adstock(cost_vals, beta)
         sat_vals = saturation_transform(adstock_vals, alpha)
         ax1.plot(cost_vals, sat_vals, label=f"{col} (α={alpha:.2f}, β={beta:.2f})")
-    ax1.set_title("各施策の反応性カーブ（Adstock → Saturation のみ）")
-    ax1.set_xlabel("コスト（円）")
+    ax1.set_title("Response Curve by Channel (Adstock → Saturation)")
+    ax1.set_xlabel("Cost (JPY)")
     ax1.ticklabel_format(style="plain", axis="x")
     ax1.get_xaxis().set_major_formatter(ticker.FuncFormatter(lambda x, _: f"¥{x:,.0f}"))
-    ax1.set_ylabel("反応値（スケーリングなし）")
+    ax1.set_ylabel("Response (Unscaled)")
     ax1.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: f"¥{int(x):,}"))
     ax1.legend()
     st.pyplot(fig1)
@@ -69,16 +69,16 @@ if uploaded_file:
         coef = model_info["model"].coef_[i]
         max_raw = df_raw[col].dropna().max() if col in df_raw.columns else 0
         max_cost = max_raw + 1_000_000
-        cost_vals = np.linspace(0, max_cost, 100)
+        cost_vals = np.linspace(0, max_cost, 300)
         adstock_vals = apply_adstock(cost_vals, beta)
         sat_vals = saturation_transform(adstock_vals, alpha)
         y_vals = np.array(sat_vals) * coef
         ax2.plot(cost_vals, y_vals, label=f"{col} (α={alpha:.2f}, β={beta:.2f})")
-    ax2.set_title("各施策の関数構造（反応 × 回帰係数）")
-    ax2.set_xlabel("コスト（円）")
+    ax2.set_title("Functional Curve by Channel (Response × Coefficient)")
+    ax2.set_xlabel("Cost (JPY)")
     ax2.ticklabel_format(style="plain", axis="x")
     ax2.get_xaxis().set_major_formatter(ticker.FuncFormatter(lambda x, _: f"¥{x:,.0f}"))
-    ax2.set_ylabel("貢献値（スケーリング済）")
+    ax2.set_ylabel("Contribution (Scaled)")
     ax2.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: f"¥{int(x):,}"))
     ax2.legend()
     st.pyplot(fig2)
