@@ -27,7 +27,7 @@ if uploaded_file:
 
     # モデル学習
     with st.spinner("🔄 Training model..."):
-    model_info, df_pred = train_model(df_raw)
+        model_info, df_pred = train_model(df_raw)
     st.success("✅ Model training completed!")
 
     # モデル評価（実績 vs 予測）
