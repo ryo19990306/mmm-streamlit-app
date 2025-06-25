@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
+from matplotlib.ticker import ScalarFormatter
 from utils import (
     train_model, evaluate_model,
     apply_adstock, saturation_transform
@@ -47,14 +48,13 @@ if uploaded_file:
 
     #各媒体のレスポンス曲線（Adstock → Saturation）を描画
     st.subheader("📊 Response Curves (Adstock → Saturation)")
-    fig1, ax1 = plt.subplots(figsize=(8, 4))
+    fig1, ax1 = plt.subplots(figsize=(10, 5))
     for i, col in enumerate(model_info["columns"]):
         alpha = np.clip(model_info["alphas"][i], 0.05, 0.95)
         beta = np.clip(model_info["betas"][i], 0.05, 0.95)
 
-        max_raw = df_raw[col].dropna().max() if col in df_raw.columns else 0
-        max_cost = max_raw + 1_000_000
-        cost_vals = np.linspace(0, max_cost, 300)
+        global_max_cost = df_raw[model_info["columns"]].max().max() + 1_000_000
+        cost_vals = np.linspace(0, global_max_cost, 300)
 
         #Adstock → Saturation変換
         adstock_vals = apply_adstock(cost_vals, beta)
@@ -62,25 +62,26 @@ if uploaded_file:
 
         #曲線の描画
         ax1.plot(cost_vals, sat_vals, label=f"{col} (α={alpha:.2f}, β={beta:.2f})")
+    
     ax1.set_title("Response Curve by Channel (Adstock → Saturation)")
     ax1.set_xlabel("Cost (JPY)")
     ax1.set_ylabel("Response (Unscaled)")
-    ax1.ticklabel_format(style="plain", axis="x")
+    ax1.yaxis.set_major_formatter(ScalarFormatter(useOffset=False))
+    ax1.ticklabel_format(style='plain', axis='y')
     ax1.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: f"¥{x:,.0f}"))
-    ax1.legend()
+    ax1.legend(loc="upper center", bbox_to_anchor=(0.5, -0.15), ncol=2)
     st.pyplot(fig1)
 
     #各媒体の貢献度カーブ（Saturation × 回帰係数）を描画
     st.subheader("📊 Functional Curve (Adstock + Saturation × Coefficient)")
-    fig2, ax2 = plt.subplots(figsize=(8, 4))
+    fig2, ax2 = plt.subplots(figsize=(10, 5))
     for i, col in enumerate(model_info["columns"]):
         alpha = np.clip(model_info["alphas"][i], 0.05, 0.95)
         beta = np.clip(model_info["betas"][i], 0.05, 0.95)
         coef = model_info["model"].coef_[i]
 
-        max_raw = df_raw[col].dropna().max() if col in df_raw.columns else 0
-        max_cost = max_raw + 1_000_000
-        cost_vals = np.linspace(0, max_cost, 300)
+        global_max_cost = df_raw[model_info["columns"]].max().max() + 1_000_000
+        cost_vals = np.linspace(0, global_max_cost, 300)
 
         #Adstock → Saturation → Contribution変換
         adstock_vals = apply_adstock(cost_vals, beta)
@@ -89,12 +90,14 @@ if uploaded_file:
 
         #曲線の描画
         ax2.plot(cost_vals, contribution_vals, label=f"{col} (α={alpha:.2f}, β={beta:.2f})")
+    
     ax2.set_title("Functional Curve by Channel (Response × Coefficient)")
     ax2.set_xlabel("Cost (JPY)")
     ax2.set_ylabel("Contribution (Scaled)")
-    ax2.ticklabel_format(style="plain", axis="x")
+    ax2.yaxis.set_major_formatter(ScalarFormatter(useOffset=False))
+    ax2.ticklabel_format(style='plain', axis='y')
     ax2.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: f"¥{x:,.0f}"))
-    ax2.legend()
+    ax2.legend(loc="upper center", bbox_to_anchor=(0.5, -0.15), ncol=2)
     st.pyplot(fig2)
 
     #各媒体の関数数式（人間が理解しやすい形で）を表示
