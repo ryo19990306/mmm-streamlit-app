@@ -45,19 +45,23 @@ if uploaded_file:
     })
     st.dataframe(df_params)
 
-    # ▼ 最大コスト（外れ値除去済み）＋ スライダー設定
+    # ▼ 最大コスト（外れ値除去済み）＋ 2つのスライダー（最大値+1000万まで拡張）
     raw_costs = df_raw[model_info["columns"]].values.flatten()
-    x_max_default = float(np.percentile(raw_costs, 95))
-    x_max = st.slider("🎚 最大広告費（X軸スケール）", min_value=1_000_000, max_value=int(np.max(raw_costs)), value=int(x_max_default), step=100_000)
-    cost_vals = np.linspace(0, x_max, 1000)
+    default_max = int(np.percentile(raw_costs, 95))
+    max_limit = int(np.max(raw_costs)) + 10_000_000
 
     # ▼ 1. 構造分析グラフ（Saturation のみ、回帰係数・Adstockなし）
     st.subheader("📊 Transformed Variable Curve (Saturation only, no Adstock / Coefficient)")
+
+    x_max_sat = st.slider("🎚 SaturationグラフのMaxCost", min_value=1_000_000, max_value=max_limit, value=default_max, step=100_000)
+    
+    cost_vals_sat = np.linspace(0, x_max_sat, 1000)
+
     fig1, ax1 = plt.subplots(figsize=(10, 5))
     for i, col in enumerate(model_info["columns"]):
         alpha = np.clip(model_info["alphas"][i], 0.05, 0.95)
-        y_vals = np.power(cost_vals, alpha)
-        ax1.plot(cost_vals, y_vals, label=f"{col} (α={alpha:.2f})")
+        y_vals = np.power(cost_vals_sat, alpha)
+        ax1.plot(cost_vals_sat, y_vals, label=f"{col} (α={alpha:.2f})")
         st.write(f"{col}: α={alpha}, Ymax={np.max(y_vals):,.2f}")
 
     ax1.set_title("Transformed Sales Driver by Channel (Saturation Only, no Coefficient)")
@@ -69,23 +73,22 @@ if uploaded_file:
     ax1.legend(loc="upper center", bbox_to_anchor=(0.5, -0.15), ncol=2)
     st.pyplot(fig1)
 
-    st.markdown("""
-    📌 このグラフはチャネルごとの Saturation（飽和効果）のみを可視化しています。  
-    時系列的な蓄積（Adstock）や回帰係数は含んでおらず、同一コストを投下した際に、  
-    各媒体がどの程度効率よく貢献するかを構造的に比較することができます。
-    """)
-
-    # ▼ 2. 売上貢献グラフ（回帰係数あり）＝ A × X（貢献）
+    # ▼ 2. 売上貢献グラフ（回帰係数あり）
     st.subheader("📊 Contribution Curve (Adstock + Saturation × Coefficient)")
+
+    x_max_contrib = st.slider("🎚 貢献グラフのMaxCost", min_value=1_000_000, max_value=max_limit, value=default_max, step=100_000)
+
+    cost_vals_contrib = np.linspace(0, x_max_contrib, 1000)
+
     fig2, ax2 = plt.subplots(figsize=(10, 5))
     for i, col in enumerate(model_info["columns"]):
         alpha = np.clip(model_info["alphas"][i], 0.05, 0.95)
         beta = np.clip(model_info["betas"][i], 0.05, 0.95)
         coef = model_info["model"].coef_[i]
-        adstock_vals = apply_adstock(cost_vals, beta)
+        adstock_vals = apply_adstock(cost_vals_contrib, beta)
         sat_vals = saturation_transform(adstock_vals, alpha)
         y_vals = np.array(sat_vals) * coef
-        ax2.plot(cost_vals, y_vals, label=f"{col} (α={alpha:.2f}, β={beta:.2f}, Coef={coef:.2f})")
+        ax2.plot(cost_vals_contrib, y_vals, label=f"{col} (α={alpha:.2f}, β={beta:.2f}, Coef={coef:.2f})")
 
     ax2.set_title("Predicted Contribution by Channel (A × X)")
     ax2.set_xlabel("Cost (JPY)")
@@ -95,11 +98,6 @@ if uploaded_file:
     ax2.ticklabel_format(style='plain', axis='y')
     ax2.legend(loc="upper center", bbox_to_anchor=(0.5, -0.15), ncol=2)
     st.pyplot(fig2)
-
-    st.markdown("""
-    📌 このグラフはチャネルごとの売上貢献度（回帰係数 × 変換構造）を示しています。  
-    モデルが学習した回帰係数を反映しており、売上への実際の寄与を可視化しています。
-    """)
 
     # ▼ 3. 数式表示（補助的に）
     st.subheader("🧮 Functional Formulas per Channel")
