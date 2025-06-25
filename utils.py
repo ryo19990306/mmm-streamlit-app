@@ -146,13 +146,6 @@ def evaluate_model(df_raw, df_pred):
 
     return metrics, fig
 
-import pandas as pd
-import numpy as np
-import jpholiday
-import matplotlib.pyplot as plt
-from scipy.optimize import minimize
-from .mmm_utils import apply_adstock, saturation_transform
-
 # パターンA: 期間×予算による最適配分（予測売上最大化）
 def generate_optimal_allocation(model_info, budget, start_date, end_date, constraints={}):
     days = pd.date_range(start=start_date, end=end_date)
