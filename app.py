@@ -53,7 +53,7 @@ if uploaded_file:
     # ▼ 1. 構造分析グラフ（Saturation のみ、回帰係数・Adstockなし）
     st.subheader("📊 Transformed Variable Curve (Saturation only, no Adstock / Coefficient)")
 
-    x_max_sat = st.slider("🎚 SaturationグラフのMaxCost", min_value=1_000, max_value=max_limit, value=default_max, step=100_000)
+    x_max_sat = st.number_input("🖊 SaturationグラフのMaxCost(¥1,000単位)", min_value=1_000, max_value=max_limit, value=default_max, step=1_000)
 
     cost_vals_sat = np.linspace(0, x_max_sat, 1000)
 
@@ -75,7 +75,7 @@ if uploaded_file:
     # ▼ 2. 売上貢献グラフ（回帰係数あり）
     st.subheader("📊 Contribution Curve (Adstock + Saturation × Coefficient)")
 
-    x_max_contrib = st.slider("🎚 貢献グラフのMaxCost", min_value=1_000, max_value=max_limit, value=default_max, step=100_000)
+   x_max_contrib = st.number_input("🖊 貢献グラフのMaxCost(¥1,000単位)", min_value=1_000, max_value=max_limit, value=default_max, step=1_000)
 
     cost_vals_contrib = np.linspace(0, x_max_contrib, 1000)
 
