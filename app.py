@@ -1,17 +1,10 @@
-# app.py（Functional Formula 表示付き 完全版）
-
 import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
-from matplotlib.ticker import FuncFormatter
-from utils import (
-    train_model,
-    evaluate_model,
-    apply_adstock,
-    saturation_transform
-)
+from matplotlib.ticker import ScalarFormatter
+from utils import train_model, evaluate_model, apply_adstock, saturation_transform
 
 # ページ設定
 st.set_page_config(page_title="MMM Simulation", layout="wide")
@@ -26,76 +19,54 @@ if uploaded_file:
     else:
         df_raw = pd.read_excel(uploaded_file)
 
-    st.subheader("📄 Uploaded Raw Data")
-    st.dataframe(df_raw.head())
+    # 学習 & 評価
+    model_info, df_pred = train_model(df_raw)
+    model = model_info["model"]
+    coefficients = model_info["coefficients"]
+    alphas_betas = model_info["alphas_betas"]
 
-    # モデル学習・評価
-    model, X, y, y_pred, adstocked_df, saturated_df, coefficients, alphas_betas = train_model(df_raw)
-    r2, rmse, mape = evaluate_model(y, y_pred)
+    # 評価指標表示
+    st.subheader("📈 Model Evaluation")
+    st.write(f"R² Score: {model_info['r2']:.4f}")
 
-    st.subheader("📈 Model Evaluation Metrics")
-    st.markdown(f"- R²: **{r2:.3f}**")
-    st.markdown(f"- RMSE: **{rmse:.2f}**")
-    st.markdown(f"- MAPE: **{mape:.2f}%**")
-
-    # コストの範囲を統一して処理
-    max_cost = df_raw.drop(columns=['date', 'sales']).max().max()
+    # グラフ最大コスト取得（全チャネル共通X軸にする）
+    cost_cols = model_info["media_columns"]
+    max_cost = df_raw[cost_cols].max().max()
     cost_range = np.linspace(0, max_cost, 100)
 
-    # 1. 回帰係数なしの変換後Xプロット
-    fig1, ax1 = plt.subplots()
-    for col in df_raw.columns:
-        if col in ['date', 'sales']:
-            continue
+    # レスポンス曲線（回帰係数なし）
+    st.subheader("🧮 Transformed Variable Curve (Adstock + Saturation, no Coefficient)")
+    fig, ax1 = plt.subplots()
+    for col in cost_cols:
         alpha, beta = alphas_betas[col]
-        adstocked = [cost_range[0]]
-        for t in range(1, len(cost_range)):
-            ad_val = cost_range[t] + alpha * adstocked[-1]
-            adstocked.append(ad_val)
-        adstocked = np.array(adstocked)
-        transformed = np.power(adstocked * beta + cost_range, 1 - beta)
-        ax1.plot(cost_range, transformed, label=f"{col} (α={alpha:.2f}, β={beta:.2f})")
-
-    ax1.set_title("Transformed Sales Driver by Channel (X without Coefficient)")
+        response = saturation_transform(apply_adstock(cost_range, alpha), beta)
+        ax1.plot(cost_range, response, label=f"{col} (α={alpha:.2f}, β={beta:.2f})")
     ax1.set_xlabel("Cost (JPY)")
     ax1.set_ylabel("Transformed Variable (Unscaled)")
-    ax1.yaxis.set_major_formatter(FuncFormatter(lambda x, _: f"¥{x:,.0f}"))
-    ax1.xaxis.set_major_formatter(FuncFormatter(lambda x, _: f"¥{x:,.0f}"))
-    ax1.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=2)
-    st.pyplot(fig1)
+    ax1.set_title("Transformed Sales Driver by Channel (X without Coefficient)")
+    ax1.legend(loc="upper center", bbox_to_anchor=(0.5, -0.25), ncol=2)
+    ax1.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: f"¥{x:,.0f}"))
+    st.pyplot(fig)
 
-    # 2. 回帰係数ありの貢献度プロット
+    # レスポンス曲線（回帰係数あり）
+    st.subheader("🧮 Predicted Contribution Curve (Adstock + Saturation × Coefficient)")
     fig2, ax2 = plt.subplots()
-    for col in df_raw.columns:
-        if col in ['date', 'sales']:
-            continue
+    for col in cost_cols:
         alpha, beta = alphas_betas[col]
         coef = coefficients[col]
-        adstocked = [cost_range[0]]
-        for t in range(1, len(cost_range)):
-            ad_val = cost_range[t] + alpha * adstocked[-1]
-            adstocked.append(ad_val)
-        adstocked = np.array(adstocked)
-        transformed = np.power(adstocked * beta + cost_range, 1 - beta)
-        contribution = transformed * coef
-        ax2.plot(cost_range, contribution,
-                 label=f"{col} (α={alpha:.2f}, β={beta:.2f}, Coef={coef:.2f})")
-
-    ax2.set_title("Predicted Contribution by Channel (A × X)")
+        response = coef * saturation_transform(apply_adstock(cost_range, alpha), beta)
+        ax2.plot(cost_range, response, label=f"{col} (α={alpha:.2f}, β={beta:.2f}, Coef={coef:.2f})")
     ax2.set_xlabel("Cost (JPY)")
     ax2.set_ylabel("Contribution to Sales")
-    ax2.yaxis.set_major_formatter(FuncFormatter(lambda x, _: f"¥{x:,.0f}"))
-    ax2.xaxis.set_major_formatter(FuncFormatter(lambda x, _: f"¥{x:,.0f}"))
-    ax2.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=2)
+    ax2.set_title("Predicted Contribution by Channel (A × X)")
+    ax2.legend(loc="upper center", bbox_to_anchor=(0.5, -0.25), ncol=2)
+    ax2.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: f"¥{x:,.0f}"))
     st.pyplot(fig2)
 
-    # 3. 数式を表示
-    st.subheader("🧮 Functional Formulas per Channel")
-    for col in df_raw.columns:
-        if col in ['date', 'sales']:
-            continue
+    # 数式の表示
+    st.subheader("🧾 Functional Formulas per Channel")
+    for col in cost_cols:
         alpha, beta = alphas_betas[col]
         coef = coefficients[col]
-        st.markdown(
-            f"**{col}**: {coef:.3f} × (Adstock(t−1)×{alpha:.3f} + Cost(t))^{1 - beta:.3f}"
-        )
+        formula = f"{coef:.2f} × (Adstock(t-1)×{beta:.3f} + Cost(t))^{alpha:.3f}"
+        st.markdown(f"**{col}**: {formula}")
