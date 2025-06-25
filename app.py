@@ -4,7 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 from matplotlib.ticker import ScalarFormatter
-from utils import (
+from mmm_utils import (
     train_model, evaluate_model,
     apply_adstock, saturation_transform,
     generate_optimal_allocation, predict_from_uploaded_plan
