@@ -44,42 +44,34 @@ if uploaded_file:
     })
     st.dataframe(df_params)
 
-    # 全チャネル共通の最大コスト設定（比較可能なX軸）
+    # 共通の最大コスト定義（すべてのチャネルにおけるX軸長の統一）
     global_max_cost = df_raw[model_info["columns"]].max().max() + 1_000_000
     cost_vals = np.linspace(0, global_max_cost, 1000)
 
-     # ▼ 1. 構造分析グラフ（回帰係数・Adstockなし）＝Saturationのみ
-st.subheader("📊 Transformed Variable Curve (Saturation only, no Adstock / Coefficient)")
+    # ▼ 1. 構造分析グラフ（回帰係数・Adstockなし）＝Saturationのみ
+    st.subheader("📊 Transformed Variable Curve (Saturation only, no Adstock / Coefficient)")
 
-fig1, ax1 = plt.subplots(figsize=(10, 5))
+    fig1, ax1 = plt.subplots(figsize=(10, 5))
+    for i, col in enumerate(model_info["columns"]):
+        alpha = np.clip(model_info["alphas"][i], 0.05, 0.95)
+        # Saturationのみ適用（Adstockはスキップ）
+        sat_vals = saturation_transform(cost_vals, alpha)
+        ax1.plot(cost_vals, sat_vals, label=f"{col} (α={alpha:.2f})")
 
-# コスト値（共通X軸）
-global_max_cost = df_raw[model_info["columns"]].max().max() + 1_000_000
-cost_vals = np.linspace(0, global_max_cost, 1000)
+    ax1.set_title("Transformed Sales Driver by Channel (Saturation Only, no Coefficient)")
+    ax1.set_xlabel("Cost (JPY)")
+    ax1.set_ylabel("Transformed Variable (Unscaled)")
+    ax1.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: f"¥{x:,.0f}"))
+    ax1.yaxis.set_major_formatter(ScalarFormatter(useOffset=False))
+    ax1.ticklabel_format(style='plain', axis='y')
+    ax1.legend(loc="upper center", bbox_to_anchor=(0.5, -0.15), ncol=2)
+    st.pyplot(fig1)
 
-for i, col in enumerate(model_info["columns"]):
-    alpha = np.clip(model_info["alphas"][i], 0.05, 0.95)
-
-    # Saturationのみ適用（Adstockスキップ）
-    sat_vals = saturation_transform(cost_vals, alpha)
-
-    ax1.plot(cost_vals, sat_vals, label=f"{col} (α={alpha:.2f})")
-
-ax1.set_title("Transformed Sales Driver by Channel (Saturation Only, no Coefficient)")
-ax1.set_xlabel("Cost (JPY)")
-ax1.set_ylabel("Transformed Variable (Unscaled)")
-ax1.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: f"¥{x:,.0f}"))
-ax1.yaxis.set_major_formatter(ScalarFormatter(useOffset=False))
-ax1.ticklabel_format(style='plain', axis='y')
-ax1.legend(loc="upper center", bbox_to_anchor=(0.5, -0.15), ncol=2)
-st.pyplot(fig1)
-
-st.markdown("""
-📌 このグラフはチャネルごとの Saturation（飽和効果）のみを可視化しています。  
-時系列的な蓄積（Adstock）や回帰係数は含んでおらず、同一コストを投下した際に、  
-各媒体がどの程度効率よく貢献するかを構造的に比較することができます。
-""")
-
+    st.markdown("""
+    📌 このグラフはチャネルごとの Saturation（飽和効果）のみを可視化しています。  
+    時系列的な蓄積（Adstock）や回帰係数は含んでおらず、同一コストを投下した際に、  
+    各媒体がどの程度効率よく貢献するかを構造的に比較することができます。
+    """)
 
     # ▼ 2. 売上貢献グラフ（回帰係数あり）＝Ax（貢献）
     st.subheader("📊 Contribution Curve (Adstock + Saturation × Coefficient)")
@@ -108,7 +100,7 @@ st.markdown("""
     モデルが学習した回帰係数を反映しており、売上への実際の寄与を可視化しています。
     """)
 
-    # ▼ 数式表示（補助的に）
+    # ▼ 3. 数式表示（補助的に）
     st.subheader("🧮 Functional Formulas per Channel")
     for i, col in enumerate(model_info["columns"]):
         alpha = np.round(model_info["alphas"][i], 3)
