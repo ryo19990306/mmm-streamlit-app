@@ -54,7 +54,7 @@ if uploaded_file:
     st.subheader("📊 Transformed Variable Curve (Saturation only, no Adstock / Coefficient)")
 
     x_max_sat = st.slider("🎚 SaturationグラフのMaxCost", min_value=1_000_000, max_value=max_limit, value=default_max, step=100_000)
-    
+
     cost_vals_sat = np.linspace(0, x_max_sat, 1000)
 
     fig1, ax1 = plt.subplots(figsize=(10, 5))
@@ -62,7 +62,6 @@ if uploaded_file:
         alpha = np.clip(model_info["alphas"][i], 0.05, 0.95)
         y_vals = np.power(cost_vals_sat, alpha)
         ax1.plot(cost_vals_sat, y_vals, label=f"{col} (α={alpha:.2f})")
-        st.write(f"{col}: α={alpha}, Ymax={np.max(y_vals):,.2f}")
 
     ax1.set_title("Transformed Sales Driver by Channel (Saturation Only, no Coefficient)")
     ax1.set_xlabel("Cost (JPY)")
