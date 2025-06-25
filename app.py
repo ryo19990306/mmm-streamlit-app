@@ -57,6 +57,8 @@ if uploaded_file:
         y_vals = np.power(cost_vals, alpha)
         ax1.plot(cost_vals, y_vals, label=f"{col} (α={alpha:.2f})")
 
+        st.write(f"{col}: α={alpha}, Ymax={np.max(y_vals):,.2f}")
+
     ax1.set_title("Transformed Sales Driver by Channel (Saturation Only, no Coefficient)")
     ax1.set_xlabel("Cost (JPY)")
     ax1.set_ylabel("Transformed Variable (Unscaled)")
