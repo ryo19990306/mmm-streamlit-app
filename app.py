@@ -8,7 +8,7 @@ from utils import (
     train_model, evaluate_model,
     apply_adstock, saturation_transform,
     generate_optimal_allocation, predict_from_uploaded_plan
-)
+    )
 
 # ページ設定
 st.set_page_config(page_title="MMM Simulation", layout="wide")
