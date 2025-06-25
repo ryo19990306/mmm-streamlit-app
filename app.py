@@ -48,18 +48,17 @@ if uploaded_file:
     global_max_cost = df_raw[model_info["columns"]].max().max() + 1_000_000
     cost_vals = np.linspace(0, global_max_cost, 300)
 
-    # ▼ 1. 構造分析グラフ（回帰係数なし）＝変換後のXそのもの
-    st.subheader("📊 Transformed Variable Curve (Adstock + Saturation, no Coefficient)")
+       # ▼ 1. 構造分析グラフ（回帰係数・Adstockなし）＝Saturationのみ
+    st.subheader("📊 Transformed Variable Curve (Saturation only, no Adstock / Coefficient)")
 
     fig1, ax1 = plt.subplots(figsize=(10, 5))
     for i, col in enumerate(model_info["columns"]):
         alpha = np.clip(model_info["alphas"][i], 0.05, 0.95)
-        beta = np.clip(model_info["betas"][i], 0.05, 0.95)
-        adstock_vals = apply_adstock(cost_vals, beta)
-        sat_vals = saturation_transform(adstock_vals, alpha)
-        ax1.plot(cost_vals, sat_vals, label=f"{col} (α={alpha:.2f}, β={beta:.2f})")
+        # Saturationのみ適用（Adstockはスキップ）
+        sat_vals = saturation_transform(cost_vals, alpha)
+        ax1.plot(cost_vals, sat_vals, label=f"{col} (α={alpha:.2f})")
 
-    ax1.set_title("Transformed Sales Driver by Channel (X without Coefficient)")
+    ax1.set_title("Transformed Sales Driver by Channel (Saturation Only, no Coefficient)")
     ax1.set_xlabel("Cost (JPY)")
     ax1.set_ylabel("Transformed Variable (Unscaled)")
     ax1.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: f"¥{x:,.0f}"))
@@ -69,8 +68,9 @@ if uploaded_file:
     st.pyplot(fig1)
 
     st.markdown("""
-    📌 このグラフはチャネルごとの反応構造（Adstock + Saturation後）を示しています。  
-    回帰係数は含まれていないため、チャネルがどのように売上ドライバーとして反応するか（構造的な変換効率）を比較できます。
+    📌 このグラフはチャネルごとの Saturation（飽和効果）のみを可視化しています。  
+    時系列的な蓄積（Adstock）や回帰係数は含んでおらず、同一コストを投下した際に、  
+    各媒体がどの程度効率よく貢献するかを構造的に比較することができます。
     """)
 
     # ▼ 2. 売上貢献グラフ（回帰係数あり）＝Ax（貢献）
