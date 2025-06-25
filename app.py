@@ -51,6 +51,10 @@ if uploaded_file:
     # ▼ 1. 構造分析グラフ（Saturation のみ、回帰係数・Adstockなし）
     st.subheader("📊 Transformed Variable Curve (Saturation only, no Adstock / Coefficient)")
 
+    # 各チャネルの最大広告費を確認
+    st.write("🔍 各チャネルの最大広告費 (rawデータ基準):")
+    st.write(df_raw[model_info["columns"]].max())
+
     fig1, ax1 = plt.subplots(figsize=(10, 5))
     for i, col in enumerate(model_info["columns"]):
         alpha = np.clip(model_info["alphas"][i], 0.05, 0.95)
