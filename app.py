@@ -26,8 +26,9 @@ if uploaded_file:
     st.dataframe(df_raw.head())
 
     # モデル学習
-    st.info("🔄 Training model...")
+    with st.spinner("🔄 Training model..."):
     model_info, df_pred = train_model(df_raw)
+    st.success("✅ Model training completed!")
 
     # モデル評価（実績 vs 予測）
     st.subheader("📈 Actual vs Predicted Sales")
@@ -44,21 +45,20 @@ if uploaded_file:
     })
     st.dataframe(df_params)
 
-    # ▼ 外れ値を除いた最大コスト定義（95パーセンタイル）
-    max_cost = np.percentile(df_raw[model_info["columns"]].values.flatten(), 95)
-    cost_vals = np.linspace(0, float(max_cost), 1000)
+    # ▼ 最大コスト（外れ値除去済み）＋ スライダー設定
+    raw_costs = df_raw[model_info["columns"]].values.flatten()
+    x_max_default = float(np.percentile(raw_costs, 95))
+    x_max = st.slider("🎚 最大広告費（X軸スケール）", min_value=1_000_000, max_value=int(np.max(raw_costs)), value=int(x_max_default), step=100_000)
+    cost_vals = np.linspace(0, x_max, 1000)
 
     # ▼ 1. 構造分析グラフ（Saturation のみ、回帰係数・Adstockなし）
     st.subheader("📊 Transformed Variable Curve (Saturation only, no Adstock / Coefficient)")
-
     fig1, ax1 = plt.subplots(figsize=(10, 5))
     for i, col in enumerate(model_info["columns"]):
         alpha = np.clip(model_info["alphas"][i], 0.05, 0.95)
         y_vals = np.power(cost_vals, alpha)
         ax1.plot(cost_vals, y_vals, label=f"{col} (α={alpha:.2f})")
-
-        # チェック用：最大値出力
-        st.write(f"{col}: α={alpha}, max_cost={cost_vals[-1]:,.0f}, y_max={np.max(y_vals):,.2f}")
+        st.write(f"{col}: α={alpha}, Ymax={np.max(y_vals):,.2f}")
 
     ax1.set_title("Transformed Sales Driver by Channel (Saturation Only, no Coefficient)")
     ax1.set_xlabel("Cost (JPY)")
@@ -71,12 +71,12 @@ if uploaded_file:
 
     st.markdown("""
     📌 このグラフはチャネルごとの Saturation（飽和効果）のみを可視化しています。  
-    Adstockや回帰係数は含まれておらず、投入コストに対する貢献効率の構造を比較できます。
+    時系列的な蓄積（Adstock）や回帰係数は含んでおらず、同一コストを投下した際に、  
+    各媒体がどの程度効率よく貢献するかを構造的に比較することができます。
     """)
 
     # ▼ 2. 売上貢献グラフ（回帰係数あり）＝ A × X（貢献）
     st.subheader("📊 Contribution Curve (Adstock + Saturation × Coefficient)")
-
     fig2, ax2 = plt.subplots(figsize=(10, 5))
     for i, col in enumerate(model_info["columns"]):
         alpha = np.clip(model_info["alphas"][i], 0.05, 0.95)
