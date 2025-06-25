@@ -145,3 +145,53 @@ def evaluate_model(df_raw, df_pred):
     plt.tight_layout()
 
     return metrics, fig
+
+# パターンA: 期間×予算による最適配分
+def generate_optimal_allocation(model_info, budget, start_date, end_date, constraints={}):
+    days = pd.date_range(start=start_date, end=end_date)
+    n_days = len(days)
+    n_channels = len(model_info["columns"])
+    base_daily = budget / n_days / n_channels
+
+    alloc_matrix = np.full((n_days, n_channels), base_daily)
+    for i, col in enumerate(model_info["columns"]):
+        min_val, max_val = constraints.get(col, (0, budget))
+        alloc_matrix[:, i] = np.clip(alloc_matrix[:, i], min_val / n_days, max_val / n_days)
+
+    alphas = model_info["alphas"]
+    betas = model_info["betas"]
+    columns = model_info["columns"]
+    extra_cols = model_info["extra_cols"]
+
+    transformed = []
+    for i in range(n_channels):
+        ad = apply_adstock(alloc_matrix[:, i], betas[i])
+        sat = saturation_transform(ad, alphas[i])
+        transformed.append(sat)
+    X_media = np.array(transformed).T
+
+    df_days = pd.DataFrame({"Date": days})
+    df_days["weekday"] = df_days["Date"].dt.weekday
+    weekday_dummies = pd.get_dummies(df_days["weekday"], prefix="wd", drop_first=True)
+    month_dummies = pd.get_dummies(df_days["Date"].dt.month, prefix="month", drop_first=True)
+    df_days["is_holiday"] = df_days["Date"].apply(lambda x: jpholiday.is_holiday(x) or x.weekday() >= 5).astype(int)
+    df_days["trend"] = (df_days["Date"] - df_days["Date"].min()).dt.days
+    extra_df = pd.concat([weekday_dummies, month_dummies, df_days[["is_holiday", "trend"]]], axis=1)
+    extra_df = extra_df.reindex(columns=extra_cols, fill_value=0)
+    X_extra = extra_df.values
+
+    X_all = np.concatenate([X_media, X_extra], axis=1)
+    pred = model_info["model"].predict(X_all)
+
+    forecast_df = pd.DataFrame({"Date": days, "Predicted_Sales": pred})
+    alloc_df = pd.DataFrame(alloc_matrix, columns=columns)
+    alloc_df["Date"] = days
+
+    fig, ax = plt.subplots(figsize=(10, 4))
+    ax.plot(forecast_df["Date"], forecast_df["Predicted_Sales"], label="Predicted Sales")
+    ax.set_title("Future Sales Forecast (Pattern A)")
+    ax.set_xlabel("Date")
+    ax.set_ylabel("Sales")
+    ax.legend()
+    plt.xticks(rotation=15)
+    plt.tight_layout()

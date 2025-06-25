@@ -6,7 +6,8 @@ import matplotlib.ticker as ticker
 from matplotlib.ticker import ScalarFormatter
 from utils import (
     train_model, evaluate_model,
-    apply_adstock, saturation_transform
+    apply_adstock, saturation_transform,
+    generate_optimal_allocation, predict_from_uploaded_plan
 )
 
 # ページ設定
@@ -106,3 +107,60 @@ if uploaded_file:
         coef = np.round(model_info["model"].coef_[i], 3)
         formula = f"{coef} × (Adstock(t-1)×{beta} + Cost(t))^{alpha}"
         st.markdown(f"**{col}**: {formula}")
+
+     #分岐選択（A or B）
+    option = st.radio("🛠 パターン選択", ["パターンA：予算最適化（期間＋予算）", "パターンB：日別予算アップロード"])
+
+    if option == "パターンA：予算最適化（期間＋予算）":
+        st.header("🅰 期間・予算を指定して最適予算配分")
+
+        start_date = st.date_input("開始日")
+        end_date = st.date_input("終了日")
+        budget = st.number_input("💰 総予算（円）", min_value=1000, step=10000)
+
+        st.markdown("🔧 媒体ごとの下限〜上限予算を入力（任意）")
+        constraints = {}
+        for col in model_info["columns"]:
+            col1, col2 = st.columns(2)
+            with col1:
+                min_val = st.number_input(f"{col} の下限", min_value=0, step=1000, value=0)
+            with col2:
+                max_val = st.number_input(f"{col} の上限", min_value=0, step=1000, value=budget)
+            constraints[col] = (min_val, max_val)
+
+        if st.button("🚀 最適予算配分を実行"):
+            forecast_df, alloc_df, fig = generate_optimal_allocation(
+                model_info, budget, start_date, end_date, constraints
+            )
+            st.subheader("📊 売上予測グラフ")
+            st.pyplot(fig)
+
+            st.subheader("📄 売上予測テーブル")
+            st.dataframe(forecast_df)
+            st.download_button("📥 売上予測をダウンロード", forecast_df.to_csv(index=False), "forecast.csv", "text/csv")
+
+            st.subheader("📄 施策別予算配分テーブル")
+            st.dataframe(alloc_df)
+            st.download_button("📥 配分予算をダウンロード", alloc_df.to_csv(index=False), "allocation.csv", "text/csv")
+
+    elif option == "パターンB：日別予算アップロード":
+        st.header("🅱 アップロードした予算に基づく売上予測")
+
+        uploaded_plan = st.file_uploader("📤 予算ファイルをアップロード（CSV/Excel）", type=["csv", "xlsx"])
+        if uploaded_plan:
+            if uploaded_plan.name.endswith(".csv"):
+                df_plan = pd.read_csv(uploaded_plan)
+            else:
+                df_plan = pd.read_excel(uploaded_plan)
+
+            st.success("✅ 予算データを読み込みました")
+            st.dataframe(df_plan.head())
+
+            forecast_df, fig = predict_from_uploaded_plan(model_info, df_plan)
+
+            st.subheader("📊 売上予測グラフ")
+            st.pyplot(fig)
+
+            st.subheader("📄 売上予測テーブル")
+            st.dataframe(forecast_df)
+            st.download_button("📥 売上予測をダウンロード", forecast_df.to_csv(index=False), "forecast_b.csv", "text/csv")
