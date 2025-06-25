@@ -54,8 +54,13 @@ if uploaded_file:
     fig1, ax1 = plt.subplots(figsize=(10, 5))
     for i, col in enumerate(model_info["columns"]):
         alpha = np.clip(model_info["alphas"][i], 0.05, 0.95)
-        y_vals = np.power(cost_vals, alpha)  # Adstock・回帰係数なしの Saturation 構造
+
+        # Saturation構造：Y = Cost^α
+        y_vals = np.power(cost_vals, alpha)
         ax1.plot(cost_vals, y_vals, label=f"{col} (α={alpha:.2f})")
+
+        # 各チャネルのY値を確認のため右端に数値を表示（検証用）
+        ax1.text(cost_vals[-1], y_vals[-1], f"{y_vals[-1]:,.0f}", fontsize=8, color="gray")
 
     ax1.set_title("Transformed Sales Driver by Channel (Saturation Only, no Coefficient)")
     ax1.set_xlabel("Cost (JPY)")
