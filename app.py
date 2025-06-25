@@ -44,17 +44,17 @@ if uploaded_file:
     })
     st.dataframe(df_params)
 
-    # 共通の最大コスト定義（すべてのチャネルにおけるX軸長の統一）
+    # ▼ 共通の最大コスト定義
     global_max_cost = df_raw[model_info["columns"]].max().max() + 1_000_000
-    cost_vals = np.linspace(0, float(global_max_cost), 1000)  # float型で生成
+    cost_vals = np.linspace(0, float(global_max_cost), 1000)  # float明示で指数計算を正確に
 
-    # ▼ 1. 構造分析グラフ（回帰係数・Adstockなし）＝Saturationのみ
+    # ▼ 1. 構造分析グラフ（Saturation のみ、回帰係数・Adstockなし）
     st.subheader("📊 Transformed Variable Curve (Saturation only, no Adstock / Coefficient)")
 
     fig1, ax1 = plt.subplots(figsize=(10, 5))
     for i, col in enumerate(model_info["columns"]):
         alpha = np.clip(model_info["alphas"][i], 0.05, 0.95)
-        y_vals = np.power(cost_vals, alpha)  # Saturation構造（指数処理）
+        y_vals = np.power(cost_vals, alpha)
         ax1.plot(cost_vals, y_vals, label=f"{col} (α={alpha:.2f})")
 
     ax1.set_title("Transformed Sales Driver by Channel (Saturation Only, no Coefficient)")
@@ -69,10 +69,10 @@ if uploaded_file:
     st.markdown("""
     📌 このグラフはチャネルごとの Saturation（飽和効果）のみを可視化しています。  
     時系列的な蓄積（Adstock）や回帰係数は含んでおらず、同一コストを投下した際に、  
-    各媒体がどの程度成長するかを構造的に比較することができます。
+    各媒体がどの程度効率よく貢献するかを構造的に比較することができます。
     """)
 
-    # ▼ 2. 売上貢献グラフ（回帰係数あり）＝Ax（貢献）
+    # ▼ 2. 売上貢献グラフ（回帰係数あり）＝ A × X（貢献）
     st.subheader("📊 Contribution Curve (Adstock + Saturation × Coefficient)")
 
     fig2, ax2 = plt.subplots(figsize=(10, 5))
