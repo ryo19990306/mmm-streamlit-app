@@ -146,27 +146,74 @@ def evaluate_model(df_raw, df_pred):
 
     return metrics, fig
 
-# パターンA: 期間×予算による最適配分
+import pandas as pd
+import numpy as np
+import jpholiday
+import matplotlib.pyplot as plt
+from scipy.optimize import minimize
+from .mmm_utils import apply_adstock, saturation_transform
+
+# パターンA: 期間×予算による最適配分（予測売上最大化）
 def generate_optimal_allocation(model_info, budget, start_date, end_date, constraints={}):
     days = pd.date_range(start=start_date, end=end_date)
     n_days = len(days)
     n_channels = len(model_info["columns"])
-    base_daily = budget / n_days / n_channels
 
-    alloc_matrix = np.full((n_days, n_channels), base_daily)
-    for i, col in enumerate(model_info["columns"]):
-        min_val, max_val = constraints.get(col, (0, budget))
-        alloc_matrix[:, i] = np.clip(alloc_matrix[:, i], min_val / n_days, max_val / n_days)
+    # 初期値：均等配分
+    init_alloc = np.full(n_days * n_channels, budget / n_days / n_channels)
 
-    alphas = model_info["alphas"]
-    betas = model_info["betas"]
-    columns = model_info["columns"]
-    extra_cols = model_info["extra_cols"]
+    # 目的関数（予測売上のマイナス値を最小化 = 売上最大化）
+    def objective(flat_alloc):
+        alloc_matrix = flat_alloc.reshape(n_days, n_channels)
+        transformed = []
+        for i in range(n_channels):
+            ad = apply_adstock(alloc_matrix[:, i], model_info["betas"][i])
+            sat = saturation_transform(ad, model_info["alphas"][i])
+            transformed.append(sat)
+        X_media = np.array(transformed).T
 
+        df_days = pd.DataFrame({"Date": days})
+        df_days["weekday"] = df_days["Date"].dt.weekday
+        weekday_dummies = pd.get_dummies(df_days["weekday"], prefix="wd", drop_first=True)
+        month_dummies = pd.get_dummies(df_days["Date"].dt.month, prefix="month", drop_first=True)
+        df_days["is_holiday"] = df_days["Date"].apply(lambda x: jpholiday.is_holiday(x) or x.weekday() >= 5).astype(int)
+        df_days["trend"] = (df_days["Date"] - df_days["Date"].min()).dt.days
+        extra_df = pd.concat([weekday_dummies, month_dummies, df_days[["is_holiday", "trend"]]], axis=1)
+        extra_df = extra_df.reindex(columns=model_info["extra_cols"], fill_value=0)
+        X_all = np.concatenate([X_media, extra_df.values], axis=1)
+
+        pred = model_info["model"].predict(X_all)
+        return -np.sum(pred)
+
+    # 総予算制約
+    constraints_list = [{
+        "type": "eq",
+        "fun": lambda x: np.sum(x) - budget
+    }]
+
+    # 境界制約
+    bounds = []
+    for _ in range(n_days):
+        for col in model_info["columns"]:
+            min_val, max_val = constraints.get(col, (0, budget))
+            bounds.append((min_val / n_days, max_val / n_days))
+
+    # 最適化
+    result = minimize(
+        objective,
+        x0=init_alloc,
+        method="L-BFGS-B",
+        bounds=bounds,
+        constraints=constraints_list
+    )
+
+    # 出力整形
+    opt_alloc_matrix = result.x.reshape(n_days, n_channels)
+    forecast_df = pd.DataFrame({"Date": days})
     transformed = []
     for i in range(n_channels):
-        ad = apply_adstock(alloc_matrix[:, i], betas[i])
-        sat = saturation_transform(ad, alphas[i])
+        ad = apply_adstock(opt_alloc_matrix[:, i], model_info["betas"][i])
+        sat = saturation_transform(ad, model_info["alphas"][i])
         transformed.append(sat)
     X_media = np.array(transformed).T
 
@@ -177,14 +224,11 @@ def generate_optimal_allocation(model_info, budget, start_date, end_date, constr
     df_days["is_holiday"] = df_days["Date"].apply(lambda x: jpholiday.is_holiday(x) or x.weekday() >= 5).astype(int)
     df_days["trend"] = (df_days["Date"] - df_days["Date"].min()).dt.days
     extra_df = pd.concat([weekday_dummies, month_dummies, df_days[["is_holiday", "trend"]]], axis=1)
-    extra_df = extra_df.reindex(columns=extra_cols, fill_value=0)
-    X_extra = extra_df.values
+    extra_df = extra_df.reindex(columns=model_info["extra_cols"], fill_value=0)
+    X_all = np.concatenate([X_media, extra_df.values], axis=1)
+    forecast_df["Predicted_Sales"] = model_info["model"].predict(X_all)
 
-    X_all = np.concatenate([X_media, X_extra], axis=1)
-    pred = model_info["model"].predict(X_all)
-
-    forecast_df = pd.DataFrame({"Date": days, "Predicted_Sales": pred})
-    alloc_df = pd.DataFrame(alloc_matrix, columns=columns)
+    alloc_df = pd.DataFrame(opt_alloc_matrix, columns=model_info["columns"])
     alloc_df["Date"] = days
 
     fig, ax = plt.subplots(figsize=(10, 4))
@@ -197,6 +241,7 @@ def generate_optimal_allocation(model_info, budget, start_date, end_date, constr
     plt.tight_layout()
 
     return forecast_df, alloc_df, fig
+
 
 # パターンB: 任意予算をアップロード
 def predict_from_uploaded_plan(model_info, df_plan):
