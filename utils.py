@@ -151,13 +151,10 @@ def generate_optimal_allocation(model_info, budget, start_date, end_date, constr
     days = pd.date_range(start=start_date, end=end_date)
     n_days = len(days)
     n_channels = len(model_info["columns"])
-
-    # 初期値：均等配分
     init_alloc = np.full(n_days * n_channels, budget / n_days / n_channels)
 
-    # 目的関数（予測売上のマイナス値を最小化 = 売上最大化）
-    def objective(flat_alloc):
-        alloc_matrix = flat_alloc.reshape(n_days, n_channels)
+    # --- 売上予測の共通関数（Adstock→Saturation→外生要因の結合） ---
+    def predict_sales(alloc_matrix):
         transformed = []
         for i in range(n_channels):
             ad = apply_adstock(alloc_matrix[:, i], model_info["betas"][i])
@@ -173,25 +170,31 @@ def generate_optimal_allocation(model_info, budget, start_date, end_date, constr
         df_days["trend"] = (df_days["Date"] - df_days["Date"].min()).dt.days
         extra_df = pd.concat([weekday_dummies, month_dummies, df_days[["is_holiday", "trend"]]], axis=1)
         extra_df = extra_df.reindex(columns=model_info["extra_cols"], fill_value=0)
-        X_all = np.concatenate([X_media, extra_df.values], axis=1)
 
+        X_all = np.concatenate([X_media, extra_df.values], axis=1)
         pred = model_info["model"].predict(X_all)
+        return pred
+
+    # --- 最適化対象（売上最大化 → -売上を最小化） ---
+    def objective(flat_alloc):
+        alloc_matrix = flat_alloc.reshape(n_days, n_channels)
+        pred = predict_sales(alloc_matrix)
         return -np.sum(pred)
 
-    # 総予算制約
+    # --- 総予算制約 ---
     constraints_list = [{
         "type": "eq",
         "fun": lambda x: np.sum(x) - budget
     }]
 
-    # 境界制約
+    # --- 各媒体ごとの境界制約 ---
     bounds = []
     for _ in range(n_days):
         for col in model_info["columns"]:
             min_val, max_val = constraints.get(col, (0, budget))
             bounds.append((min_val / n_days, max_val / n_days))
 
-    # 最適化
+    # --- 最適化実行 ---
     result = minimize(
         objective,
         x0=init_alloc,
@@ -200,26 +203,10 @@ def generate_optimal_allocation(model_info, budget, start_date, end_date, constr
         constraints=constraints_list
     )
 
-    # 出力整形
+    # --- 結果の成形 ---
     opt_alloc_matrix = result.x.reshape(n_days, n_channels)
     forecast_df = pd.DataFrame({"Date": days})
-    transformed = []
-    for i in range(n_channels):
-        ad = apply_adstock(opt_alloc_matrix[:, i], model_info["betas"][i])
-        sat = saturation_transform(ad, model_info["alphas"][i])
-        transformed.append(sat)
-    X_media = np.array(transformed).T
-
-    df_days = pd.DataFrame({"Date": days})
-    df_days["weekday"] = df_days["Date"].dt.weekday
-    weekday_dummies = pd.get_dummies(df_days["weekday"], prefix="wd", drop_first=True)
-    month_dummies = pd.get_dummies(df_days["Date"].dt.month, prefix="month", drop_first=True)
-    df_days["is_holiday"] = df_days["Date"].apply(lambda x: jpholiday.is_holiday(x) or x.weekday() >= 5).astype(int)
-    df_days["trend"] = (df_days["Date"] - df_days["Date"].min()).dt.days
-    extra_df = pd.concat([weekday_dummies, month_dummies, df_days[["is_holiday", "trend"]]], axis=1)
-    extra_df = extra_df.reindex(columns=model_info["extra_cols"], fill_value=0)
-    X_all = np.concatenate([X_media, extra_df.values], axis=1)
-    forecast_df["Predicted_Sales"] = model_info["model"].predict(X_all)
+    forecast_df["Predicted_Sales"] = predict_sales(opt_alloc_matrix)
 
     alloc_df = pd.DataFrame(opt_alloc_matrix, columns=model_info["columns"])
     alloc_df["Date"] = days
