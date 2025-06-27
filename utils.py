@@ -1,12 +1,12 @@
-# utils.py
-
 import pandas as pd
 import numpy as np
 import jpholiday
 from sklearn.linear_model import ElasticNet
-from sklearn.metrics import r2_score, mean_absolute_percentage_error, mean_squared_error
+from sklearn.metrics import r2_score, mean_absolute_percentage_error, mean_squared_error, make_scorer
+from sklearn.model_selection import GridSearchCV
 from scipy.optimize import minimize
 import matplotlib.pyplot as plt
+import streamlit as st  # Streamlitログ出力用
 
 # ▼ Adstock変換
 def apply_adstock(x, beta):
@@ -38,8 +38,39 @@ def create_time_features(df_dates, base_date_min, extra_cols=None):
         extra_df = extra_df.reindex(columns=extra_cols, fill_value=0)
     return extra_df
 
-# ▼ モデル学習（GridSearchCVは外で実施済み前提）
-def train_model(df_raw, model=None):
+# ▼ ElasticNetハイパーパラメータチューニング
+def tune_elasticnet(X_all, y):
+    param_grid = {
+        "alpha": [0.01, 0.1, 1.0, 10.0],
+        "l1_ratio": [0.1, 0.5, 0.9]
+    }
+    elastic = ElasticNet(positive=True, max_iter=5000)
+    scorer = make_scorer(r2_score)
+    grid = GridSearchCV(estimator=elastic, param_grid=param_grid, scoring=scorer, cv=3, n_jobs=-1)
+    grid.fit(X_all, y)
+    return grid.best_params_
+
+# ▼ α・β最適化目的関数
+def objective_alpha_beta(params, trainX, y, media_cols, best_params):
+    alphas = params[:len(media_cols)]
+    betas = params[len(media_cols):]
+    X_transformed = []
+    for i, col in enumerate(media_cols):
+        ad = apply_adstock(trainX[col].values, betas[i])
+        sat = saturation_transform(ad, alphas[i])
+        X_transformed.append(sat)
+    X_media = np.array(X_transformed).T
+    X_extra = trainX.drop(columns=media_cols).values
+    X_all = np.concatenate([X_media, X_extra], axis=1)
+
+    elastic = ElasticNet(**best_params, positive=True, max_iter=5000)
+    elastic.fit(X_all, y)
+    pred = elastic.predict(X_all)
+
+    return -r2_score(y, pred)
+
+# ▼ モデル学習
+def train_model(df_raw):
     df = df_raw.copy()
     df.columns = df.columns.str.strip()
     df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
@@ -61,30 +92,50 @@ def train_model(df_raw, model=None):
     extra_feature_cols = list(extra_features.columns)
     media_cols = [col for col in X.columns if col not in extra_feature_cols]
 
-    # α・β仮固定（0.5）
-    alphas = [0.5] * len(media_cols)
-    betas = [0.5] * len(media_cols)
+    # ▼ 先にElasticNetパラメータチューニング
+    X_transformed_init = []
+    for col in media_cols:
+        ad = apply_adstock(X[col].values, 0.5)
+        sat = saturation_transform(ad, 0.5)
+        X_transformed_init.append(sat)
+    X_media_init = np.array(X_transformed_init).T
+    X_extra = X.drop(columns=media_cols).values
+    X_all_init = np.concatenate([X_media_init, X_extra], axis=1)
 
-    # Adstock + Saturation 変換
+    best_params = tune_elasticnet(X_all_init, y)
+
+    # ▼ αβ最適化
+    n_media = len(media_cols)
+    init_params = [0.5] * n_media + [0.5] * n_media
+    alpha_bounds = [(0.2, 0.95)] * n_media
+    beta_bounds = [(0.05, 0.95)] * n_media
+    bounds = alpha_bounds + beta_bounds
+
+    res = minimize(objective_alpha_beta, x0=init_params, args=(X, y, media_cols, best_params), bounds=bounds, method="L-BFGS-B")
+    alphas = res.x[:n_media]
+    betas = res.x[n_media:]
+
+    # ▼ 最終モデル学習
     X_transformed = []
     for i, col in enumerate(media_cols):
         ad = apply_adstock(X[col].values, betas[i])
         sat = saturation_transform(ad, alphas[i])
         X_transformed.append(sat)
     X_media = np.array(X_transformed).T
-    X_extra = X.drop(columns=media_cols).values
     X_all = np.concatenate([X_media, X_extra], axis=1)
 
-    # ElasticNet モデル学習
-    if model is None:
-        model = ElasticNet(alpha=1.0, l1_ratio=0.5, positive=True, max_iter=10000)
-        model.fit(X_all, y)
-    else:
-        model.fit(X_all, y)
+    elastic = ElasticNet(**best_params, positive=True, max_iter=5000)
+    elastic.fit(X_all, y)
+    pred = elastic.predict(X_all)
 
-    pred = model.predict(X_all)
-
-    return {"model": model, "alphas": alphas, "betas": betas, "columns": media_cols, "extra_cols": extra_feature_cols}, pd.Series(pred, index=X.index)
+    return {
+        "model": elastic,
+        "alphas": alphas,
+        "betas": betas,
+        "columns": media_cols,
+        "extra_cols": extra_feature_cols,
+        "best_params": best_params
+    }, pd.Series(pred, index=X.index)
 
 # ▼ 評価関数
 def evaluate_model(df_pred):
@@ -109,9 +160,8 @@ def evaluate_model(df_pred):
 
     return metrics, fig
 
-# ▼ パターンA
+# ▼ パターンA：最適予算配分（Streamlitログ出力追加）
 def generate_optimal_allocation(model_info, budget, start_date, end_date, constraints={}, disp=False):
-    import streamlit as st
     days = pd.date_range(start=start_date, end=end_date)
     n_days = len(days)
     if n_days == 0:
@@ -163,14 +213,11 @@ def generate_optimal_allocation(model_info, budget, start_date, end_date, constr
         options={"disp": disp, "maxiter": 500}
     )
 
-    # ▼▼▼ 最適化結果ログ出力 ▼▼▼
-    print("Optimization success:", result.success)
-    print("Optimization status message:", result.message)
-    print("Optimization objective value:", -result.fun)
-    st.write("🔍 **最適化結果**")
-    st.write("✅ Optimization success:", result.success)
-    st.write("💬 Optimization message:", result.message)
-    st.write("🎯 Objective (total predicted sales):", round(-result.fun, 2))
+    # ▼ Streamlitログ出力
+    st.subheader("📝 最適化結果ログ")
+    st.text(f"Optimization success: {result.success}")
+    st.text(f"Optimization status message: {result.message}")
+    st.text(f"Optimization objective value (Total Predicted Sales): {-result.fun:.2f}")
 
     opt_alloc_matrix = result.x.reshape(n_days, n_channels)
     forecast_df = pd.DataFrame({"Date": days})
@@ -190,7 +237,7 @@ def generate_optimal_allocation(model_info, budget, start_date, end_date, constr
 
     return forecast_df, alloc_df, fig
 
-# ▼ パターンB（変更なし）
+# ▼ パターンB：アップロードプラン予測
 def predict_from_uploaded_plan(model_info, df_plan):
     if "Date" in df_plan.columns:
         dates = pd.to_datetime(df_plan["Date"])
