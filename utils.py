@@ -77,7 +77,10 @@ def train_model(df_raw):
 
     n_media = len(media_cols)
     init_params = [0.5] * n_media + [0.5] * n_media
-    bounds = [(0.05, 0.95)] * (n_media * 2)
+
+    alpha_bounds = [(0.2, 0.95)] * n_media
+    beta_bounds = [(0.05, 0.95)] * n_media
+    bounds = alpha_bounds + beta_bounds
 
     res = minimize(objective_alpha_beta, x0=init_params, args=(X, y, media_cols), bounds=bounds, method="L-BFGS-B")
     alphas = res.x[:n_media]
