@@ -148,69 +148,90 @@ def evaluate_model(df_raw, df_pred):
 
 # パターンA: 期間×予算による最適配分（予測売上最大化）
 def generate_optimal_allocation(model_info, budget, start_date, end_date, constraints={}):
+    # 対象期間の日付リストを作成
     days = pd.date_range(start=start_date, end=end_date)
+
+    # 対象日数と媒体数を取得
     n_days = len(days)
     n_channels = len(model_info["columns"])
+
+    # 初期値：各チャネルに等配分（総予算 ÷ 日数 ÷ チャネル数）
     init_alloc = np.full(n_days * n_channels, budget / n_days / n_channels)
 
-    # --- 売上予測の共通関数（Adstock→Saturation→外生要因の結合） ---
+    # --- 売上予測の内部関数（Adstock → Saturation → 外生変数追加） ---
     def predict_sales(alloc_matrix):
         transformed = []
         for i in range(n_channels):
+            # 各チャネルの広告費配列にAdstockとSaturationを適用
             ad = apply_adstock(alloc_matrix[:, i], model_info["betas"][i])
             sat = saturation_transform(ad, model_info["alphas"][i])
             transformed.append(sat)
+        # 媒体変数の変換結果を結合（n_days × n_channels）
         X_media = np.array(transformed).T
 
+        # 日付に基づいた外生変数（曜日・月・祝日・トレンド）を生成
         df_days = pd.DataFrame({"Date": days})
         df_days["weekday"] = df_days["Date"].dt.weekday
         weekday_dummies = pd.get_dummies(df_days["weekday"], prefix="wd", drop_first=True)
         month_dummies = pd.get_dummies(df_days["Date"].dt.month, prefix="month", drop_first=True)
         df_days["is_holiday"] = df_days["Date"].apply(lambda x: jpholiday.is_holiday(x) or x.weekday() >= 5).astype(int)
         df_days["trend"] = (df_days["Date"] - df_days["Date"].min()).dt.days
+
+        # 外生変数を1つのDataFrameに統合し、学習済みと同じ列順に整列
         extra_df = pd.concat([weekday_dummies, month_dummies, df_days[["is_holiday", "trend"]]], axis=1)
         extra_df = extra_df.reindex(columns=model_info["extra_cols"], fill_value=0)
 
+        # 媒体変数 + 外生変数を連結し、予測用のXを作成
         X_all = np.concatenate([X_media, extra_df.values], axis=1)
+
+        # 学習済みモデルで売上を予測
         pred = model_info["model"].predict(X_all)
         return pred
 
-    # --- 最適化対象（売上最大化 → -売上を最小化） ---
+    # --- 最適化の目的関数（売上最大化＝予測売上の合計を最大化） ---
     def objective(flat_alloc):
+        # フラットな予算配列を（n_days × n_channels）に変換
         alloc_matrix = flat_alloc.reshape(n_days, n_channels)
+        # 売上予測を実行し、マイナスにして返す（最小化問題として解くため）
         pred = predict_sales(alloc_matrix)
         return -np.sum(pred)
 
-    # --- 総予算制約 ---
+    # --- 総予算に関する等式制約（合計が budget に等しいこと） ---
     constraints_list = [{
         "type": "eq",
         "fun": lambda x: np.sum(x) - budget
     }]
 
-    # --- 各媒体ごとの境界制約 ---
+    # --- 各媒体ごとの最小・最大境界制約（1日あたり） ---
     bounds = []
     for _ in range(n_days):
         for col in model_info["columns"]:
+            # 各媒体について、constraints から制約があれば取得、なければ(0, budget)を設定
             min_val, max_val = constraints.get(col, (0, budget))
             bounds.append((min_val / n_days, max_val / n_days))
 
-    # --- 最適化実行 ---
+    # --- 最適化処理（L-BFGS-B + 総予算制約 + 境界制約） ---
     result = minimize(
-        objective,
-        x0=init_alloc,
-        method="L-BFGS-B",
-        bounds=bounds,
-        constraints=constraints_list
+        objective,               # 最小化対象の関数（＝ -売上）
+        x0=init_alloc,           # 初期値（均等配分）
+        method="L-BFGS-B",       # 境界付き最適化法（連続変数向け）
+        bounds=bounds,           # 媒体別の下限・上限
+        constraints=constraints_list  # 総予算制約
     )
 
-    # --- 結果の成形 ---
+    # --- 最適化結果の整形 ---
+    # 最適な配分をチャネル別の日別配列に戻す
     opt_alloc_matrix = result.x.reshape(n_days, n_channels)
+
+    # 最終的な予測売上を計算
     forecast_df = pd.DataFrame({"Date": days})
     forecast_df["Predicted_Sales"] = predict_sales(opt_alloc_matrix)
 
+    # 日別のチャネル別配分も整形
     alloc_df = pd.DataFrame(opt_alloc_matrix, columns=model_info["columns"])
     alloc_df["Date"] = days
 
+    # --- 売上予測の折れ線グラフ（オプション出力） ---
     fig, ax = plt.subplots(figsize=(10, 4))
     ax.plot(forecast_df["Date"], forecast_df["Predicted_Sales"], label="Predicted Sales")
     ax.set_title("Future Sales Forecast (Pattern A)")
@@ -220,6 +241,7 @@ def generate_optimal_allocation(model_info, budget, start_date, end_date, constr
     plt.xticks(rotation=15)
     plt.tight_layout()
 
+    # 売上予測・日別配分・グラフを返却
     return forecast_df, alloc_df, fig
 
 
