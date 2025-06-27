@@ -72,6 +72,16 @@ if uploaded_file:
         end_date = st.date_input("終了日")
         budget = st.number_input("総予算", min_value=0, step=1000, value=1_000_000)
 
+        if start_date > end_date:
+            st.error("開始日は終了日以前を指定してください。")
+            st.stop()
+
+        days = pd.date_range(start=start_date, end=end_date)
+        n_days = len(days)
+        if n_days == 0:
+            st.error("指定された期間の日数が0です。正しい日付範囲を選択してください。")
+            st.stop()
+
         # 媒体ごとの制約
         st.markdown("🔧 媒体ごとの下限〜上限予算（任意）")
         constraints = {}

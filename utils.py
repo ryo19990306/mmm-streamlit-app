@@ -8,9 +8,6 @@ import matplotlib.pyplot as plt
 
 # ▼ Adstock変換
 def apply_adstock(x, beta):
-    """
-    Adstock変換: 過去の広告効果を減衰率betaで累積させる
-    """
     x = np.array(x)
     result = np.zeros_like(x)
     result[0] = x[0]
@@ -20,17 +17,11 @@ def apply_adstock(x, beta):
 
 # ▼ Saturation変換
 def saturation_transform(x, alpha):
-    """
-    Saturation変換: Cost^alpha を返す
-    """
     x = np.maximum(x, 0)
     return np.power(x, alpha)
 
 # ▼ 時系列特徴量生成
 def create_time_features(df_dates, base_date_min, extra_cols=None):
-    """
-    曜日, 月, 祝日, トレンド特徴量を生成
-    """
     df = df_dates.copy()
     df["weekday"] = df["Date"].dt.weekday
     weekday_dummies = pd.get_dummies(df["weekday"], prefix="wd", drop_first=True)
@@ -47,9 +38,6 @@ def create_time_features(df_dates, base_date_min, extra_cols=None):
 
 # ▼ α・β最適化目的関数
 def objective_alpha_beta(params, trainX, y, media_cols):
-    """
-    α・β最適化の目的関数 (R^2最大化のために -R^2 を返す)
-    """
     alphas = params[:len(media_cols)]
     betas = params[len(media_cols):]
     X_transformed = []
@@ -66,9 +54,6 @@ def objective_alpha_beta(params, trainX, y, media_cols):
 
 # ▼ モデル学習
 def train_model(df_raw):
-    """
-    Adstock + Saturation 適用 + Ridge回帰モデル学習
-    """
     df = df_raw.copy()
     df.columns = df.columns.str.strip()
     df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
@@ -98,7 +83,6 @@ def train_model(df_raw):
     alphas = res.x[:n_media]
     betas = res.x[n_media:]
 
-    # 最適化後変換
     X_transformed = []
     for i, col in enumerate(media_cols):
         ad = apply_adstock(X[col].values, betas[i])
@@ -111,13 +95,10 @@ def train_model(df_raw):
     model = Ridge(alpha=1.0).fit(X_all, y)
     pred = model.predict(X_all)
 
-    return {"model": model, "alphas": alphas, "betas": betas, "columns": media_cols, "extra_cols": extra_feature_cols}, pred
+    return {"model": model, "alphas": alphas, "betas": betas, "columns": media_cols, "extra_cols": extra_feature_cols}, pd.Series(pred, index=X.index)
 
 # ▼ 評価関数
 def evaluate_model(df_pred):
-    """
-    予測と実績の比較評価 (R_squared, MAPE, RMSE) + プロット生成
-    """
     r2 = r2_score(df_pred["Actual_Sales"], df_pred["Predicted_Sales"])
     rmse = np.sqrt(mean_squared_error(df_pred["Actual_Sales"], df_pred["Predicted_Sales"]))
     mape = mean_absolute_percentage_error(df_pred["Actual_Sales"], df_pred["Predicted_Sales"])
@@ -139,16 +120,14 @@ def evaluate_model(df_pred):
 
     return metrics, fig
 
-# ▼ パターンA: 期間×予算最適配分
+# ▼ パターンA
 def generate_optimal_allocation(model_info, budget, start_date, end_date, constraints={}, disp=False):
-    """
-    指定期間・予算に基づき売上最大化となる最適予算配分を算出
-    """
     days = pd.date_range(start=start_date, end=end_date)
     n_days = len(days)
-    n_channels = len(model_info["columns"])
+    if n_days == 0:
+        raise ValueError("指定された期間の日数が0です。start_dateとend_dateを確認してください。")
 
-    # 回帰係数重み付き初期値
+    n_channels = len(model_info["columns"])
     coefs = np.abs(model_info["model"].coef_[:n_channels])
     coefs = np.where(coefs == 0, 1e-6, coefs)
     weights = coefs / np.sum(coefs)
@@ -171,7 +150,6 @@ def generate_optimal_allocation(model_info, budget, start_date, end_date, constr
         pred = predict_sales(alloc_matrix)
         return -np.sum(pred)
 
-    # 制約条件
     constraints_list = [{"type": "eq", "fun": lambda x: np.sum(x) - budget}]
     for j, col in enumerate(model_info["columns"]):
         min_val, max_val = constraints.get(col, (0, budget))
@@ -213,11 +191,8 @@ def generate_optimal_allocation(model_info, budget, start_date, end_date, constr
 
     return forecast_df, alloc_df, fig
 
-# ▼ パターンB: 任意予算配分アップロード予測
+# ▼ パターンB
 def predict_from_uploaded_plan(model_info, df_plan):
-    """
-    アップロードした予算配分計画に基づき売上予測を算出
-    """
     if "Date" in df_plan.columns:
         dates = pd.to_datetime(df_plan["Date"])
         df_plan = df_plan.drop(columns=["Date"])
