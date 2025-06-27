@@ -1,8 +1,9 @@
 import pandas as pd
 import numpy as np
 import jpholiday
-from sklearn.linear_model import Ridge
-from sklearn.metrics import r2_score, mean_absolute_percentage_error, mean_squared_error
+from sklearn.linear_model import ElasticNet
+from sklearn.metrics import r2_score, mean_absolute_percentage_error, mean_squared_error, make_scorer
+from sklearn.model_selection import GridSearchCV
 from scipy.optimize import minimize
 import matplotlib.pyplot as plt
 
@@ -48,8 +49,18 @@ def objective_alpha_beta(params, trainX, y, media_cols):
     X_media = np.array(X_transformed).T
     X_extra = trainX.drop(columns=media_cols).values
     X_all = np.concatenate([X_media, X_extra], axis=1)
-    model = Ridge(alpha=1.0).fit(X_all, y)
-    pred = model.predict(X_all)
+
+    # ElasticNetモデル + GridSearchCVで最適パラメータ探索
+    param_grid = {
+        "alpha": [0.01, 0.1, 1.0, 10.0],
+        "l1_ratio": [0.1, 0.5, 0.9]
+    }
+    elastic = ElasticNet(positive=True, max_iter=5000)
+    scorer = make_scorer(r2_score)
+    grid = GridSearchCV(estimator=elastic, param_grid=param_grid, scoring=scorer, cv=3)
+    grid.fit(X_all, y)
+    pred = grid.predict(X_all)
+
     return -r2_score(y, pred)
 
 # ▼ モデル学習
@@ -77,7 +88,6 @@ def train_model(df_raw):
 
     n_media = len(media_cols)
     init_params = [0.5] * n_media + [0.5] * n_media
-
     alpha_bounds = [(0.2, 0.95)] * n_media
     beta_bounds = [(0.05, 0.95)] * n_media
     bounds = alpha_bounds + beta_bounds
@@ -86,6 +96,7 @@ def train_model(df_raw):
     alphas = res.x[:n_media]
     betas = res.x[n_media:]
 
+    # 最終モデル学習（GridSearchCVで再学習）
     X_transformed = []
     for i, col in enumerate(media_cols):
         ad = apply_adstock(X[col].values, betas[i])
@@ -95,10 +106,25 @@ def train_model(df_raw):
     X_extra = X.drop(columns=media_cols).values
     X_all = np.concatenate([X_media, X_extra], axis=1)
 
-    model = Ridge(alpha=1.0).fit(X_all, y)
+    param_grid = {
+        "alpha": [0.01, 0.1, 1.0, 10.0],
+        "l1_ratio": [0.1, 0.5, 0.9]
+    }
+    elastic = ElasticNet(positive=True, max_iter=5000)
+    scorer = make_scorer(r2_score)
+    grid = GridSearchCV(estimator=elastic, param_grid=param_grid, scoring=scorer, cv=3)
+    grid.fit(X_all, y)
+    model = grid.best_estimator_
     pred = model.predict(X_all)
 
-    return {"model": model, "alphas": alphas, "betas": betas, "columns": media_cols, "extra_cols": extra_feature_cols}, pd.Series(pred, index=X.index)
+    return {
+        "model": model,
+        "alphas": alphas,
+        "betas": betas,
+        "columns": media_cols,
+        "extra_cols": extra_feature_cols,
+        "best_params": grid.best_params_
+    }, pd.Series(pred, index=X.index)
 
 # ▼ 評価関数
 def evaluate_model(df_pred):
@@ -123,7 +149,7 @@ def evaluate_model(df_pred):
 
     return metrics, fig
 
-# ▼ パターンA
+# ▼ パターンA：最適予算配分
 def generate_optimal_allocation(model_info, budget, start_date, end_date, constraints={}, disp=False):
     days = pd.date_range(start=start_date, end=end_date)
     n_days = len(days)
@@ -194,7 +220,7 @@ def generate_optimal_allocation(model_info, budget, start_date, end_date, constr
 
     return forecast_df, alloc_df, fig
 
-# ▼ パターンB
+# ▼ パターンB：アップロードプラン予測
 def predict_from_uploaded_plan(model_info, df_plan):
     if "Date" in df_plan.columns:
         dates = pd.to_datetime(df_plan["Date"])
