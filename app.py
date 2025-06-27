@@ -4,6 +4,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 from matplotlib.ticker import ScalarFormatter
+import matplotlib
+
+# ▼ 日本語フォント設定（IPAexGothic例）
+matplotlib.rcParams['font.family'] = 'IPAexGothic'
+
 from utils import (
     train_model, evaluate_model,
     apply_adstock, saturation_transform,
@@ -61,7 +66,7 @@ if uploaded_file:
     })
     st.dataframe(df_params)
 
-    # ▼ 最大コスト（外れ値除去済み）計算
+    # ▼ 最大コスト（95パーセンタイルをデフォルト、最大値＋10M）
     raw_costs = df_raw[model_info["columns"]].values.flatten()
     default_max = int(np.percentile(raw_costs, 95))
     max_limit = int(np.max(raw_costs)) + 10_000_000
@@ -87,8 +92,11 @@ if uploaded_file:
     ax1.set_title("Saturation Only")
     ax1.set_xlabel("Cost (JPY)")
     ax1.set_ylabel("Transformed Variable")
-    ax1.legend()
     ax1.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: f"¥{x:,.0f}"))
+
+    # ▼ 凡例を下に配置
+    ax1.legend(loc="upper center", bbox_to_anchor=(0.5, -0.15), ncol=2)
+
     st.pyplot(fig1)
 
     # ▼ ContributionグラフのX軸最大値入力
@@ -113,8 +121,11 @@ if uploaded_file:
     ax2.set_title("Contribution Curve")
     ax2.set_xlabel("Cost (JPY)")
     ax2.set_ylabel("Contribution to Sales")
-    ax2.legend()
     ax2.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: f"¥{x:,.0f}"))
+
+    # ▼ 凡例を下に配置
+    ax2.legend(loc="upper center", bbox_to_anchor=(0.5, -0.15), ncol=2)
+
     st.pyplot(fig2)
 
     # ▼ 数式表示
