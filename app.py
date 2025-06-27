@@ -61,6 +61,71 @@ if uploaded_file:
     })
     st.dataframe(df_params)
 
+    # ▼ 最大コスト（外れ値除去済み）計算
+    raw_costs = df_raw[model_info["columns"]].values.flatten()
+    default_max = int(np.percentile(raw_costs, 95))
+    max_limit = int(np.max(raw_costs)) + 10_000_000
+
+    # ▼ SaturationグラフのX軸最大値入力
+    st.subheader("🖊 SaturationグラフのMaxCost設定")
+    x_max_sat = st.number_input(
+        "SaturationグラフのX軸最大値 (Cost)",
+        min_value=1_000,
+        max_value=max_limit,
+        value=default_max,
+        step=10_000
+    )
+    cost_vals_sat = np.linspace(0, x_max_sat, 1000)
+
+    # ▼ Saturation構造分析グラフ
+    st.subheader("📊 Transformed Variable Curve (Saturation Only, no Coefficient / Adstock)")
+    fig1, ax1 = plt.subplots(figsize=(10, 5))
+    for i, col in enumerate(model_info["columns"]):
+        alpha = model_info["alphas"][i]
+        y_vals = np.power(cost_vals_sat, alpha)
+        ax1.plot(cost_vals_sat, y_vals, label=f"{col} (α={alpha:.2f})")
+    ax1.set_title("Saturation Only")
+    ax1.set_xlabel("Cost (JPY)")
+    ax1.set_ylabel("Transformed Variable")
+    ax1.legend()
+    ax1.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: f"¥{x:,.0f}"))
+    st.pyplot(fig1)
+
+    # ▼ ContributionグラフのX軸最大値入力
+    st.subheader("🖊 ContributionグラフのMaxCost設定")
+    x_max_contrib = st.number_input(
+        "ContributionグラフのX軸最大値 (Cost)",
+        min_value=1_000,
+        max_value=max_limit,
+        value=default_max,
+        step=10_000
+    )
+    cost_vals_contrib = np.linspace(0, x_max_contrib, 1000)
+
+    # ▼ 貢献曲線グラフ
+    st.subheader("📊 Contribution Curve (Adstock + Saturation × Coefficient)")
+    fig2, ax2 = plt.subplots(figsize=(10, 5))
+    for i, col in enumerate(model_info["columns"]):
+        alpha = model_info["alphas"][i]
+        coef = model_info["model"].coef_[i]
+        y_vals = np.power(cost_vals_contrib, alpha) * coef
+        ax2.plot(cost_vals_contrib, y_vals, label=f"{col} (α={alpha:.2f}, Coef={coef:.2f})")
+    ax2.set_title("Contribution Curve")
+    ax2.set_xlabel("Cost (JPY)")
+    ax2.set_ylabel("Contribution to Sales")
+    ax2.legend()
+    ax2.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: f"¥{x:,.0f}"))
+    st.pyplot(fig2)
+
+    # ▼ 数式表示
+    st.subheader("🧮 Functional Formulas per Channel")
+    for i, col in enumerate(model_info["columns"]):
+        alpha = np.round(model_info["alphas"][i], 3)
+        beta = np.round(model_info["betas"][i], 3)
+        coef = np.round(model_info["model"].coef_[i], 3)
+        formula = f"{coef} × (Adstock × β={beta})^{alpha}"
+        st.markdown(f"**{col}**: {formula}")
+
     # ▼ パターン分岐
     option = st.radio("🛠 パターン選択", ["パターンA：予算最適化（期間＋予算）", "パターンB：日別予算アップロード"])
 
