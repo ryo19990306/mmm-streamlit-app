@@ -37,8 +37,20 @@ def create_time_features(df_dates, base_date_min, extra_cols=None):
         extra_df = extra_df.reindex(columns=extra_cols, fill_value=0)
     return extra_df
 
+# ▼ ElasticNetハイパーパラメータチューニング
+def tune_elasticnet(X_all, y):
+    param_grid = {
+        "alpha": [0.01, 0.1, 1.0, 10.0],
+        "l1_ratio": [0.1, 0.5, 0.9]
+    }
+    elastic = ElasticNet(positive=True, max_iter=5000)
+    scorer = make_scorer(r2_score)
+    grid = GridSearchCV(estimator=elastic, param_grid=param_grid, scoring=scorer, cv=3, n_jobs=-1)
+    grid.fit(X_all, y)
+    return grid.best_params_
+
 # ▼ α・β最適化目的関数
-def objective_alpha_beta(params, trainX, y, media_cols):
+def objective_alpha_beta(params, trainX, y, media_cols, best_params):
     alphas = params[:len(media_cols)]
     betas = params[len(media_cols):]
     X_transformed = []
@@ -50,16 +62,9 @@ def objective_alpha_beta(params, trainX, y, media_cols):
     X_extra = trainX.drop(columns=media_cols).values
     X_all = np.concatenate([X_media, X_extra], axis=1)
 
-    # ElasticNetモデル + GridSearchCVで最適パラメータ探索
-    param_grid = {
-        "alpha": [0.01, 0.1, 1.0, 10.0],
-        "l1_ratio": [0.1, 0.5, 0.9]
-    }
-    elastic = ElasticNet(positive=True, max_iter=5000)
-    scorer = make_scorer(r2_score)
-    grid = GridSearchCV(estimator=elastic, param_grid=param_grid, scoring=scorer, cv=3)
-    grid.fit(X_all, y)
-    pred = grid.predict(X_all)
+    elastic = ElasticNet(**best_params, positive=True, max_iter=5000)
+    elastic.fit(X_all, y)
+    pred = elastic.predict(X_all)
 
     return -r2_score(y, pred)
 
@@ -86,44 +91,49 @@ def train_model(df_raw):
     extra_feature_cols = list(extra_features.columns)
     media_cols = [col for col in X.columns if col not in extra_feature_cols]
 
+    # ▼ 先にElasticNetパラメータチューニング
+    X_transformed_init = []
+    for col in media_cols:
+        ad = apply_adstock(X[col].values, 0.5)
+        sat = saturation_transform(ad, 0.5)
+        X_transformed_init.append(sat)
+    X_media_init = np.array(X_transformed_init).T
+    X_extra = X.drop(columns=media_cols).values
+    X_all_init = np.concatenate([X_media_init, X_extra], axis=1)
+
+    best_params = tune_elasticnet(X_all_init, y)
+
+    # ▼ αβ最適化
     n_media = len(media_cols)
     init_params = [0.5] * n_media + [0.5] * n_media
     alpha_bounds = [(0.2, 0.95)] * n_media
     beta_bounds = [(0.05, 0.95)] * n_media
     bounds = alpha_bounds + beta_bounds
 
-    res = minimize(objective_alpha_beta, x0=init_params, args=(X, y, media_cols), bounds=bounds, method="L-BFGS-B")
+    res = minimize(objective_alpha_beta, x0=init_params, args=(X, y, media_cols, best_params), bounds=bounds, method="L-BFGS-B")
     alphas = res.x[:n_media]
     betas = res.x[n_media:]
 
-    # 最終モデル学習（GridSearchCVで再学習）
+    # ▼ 最終モデル学習
     X_transformed = []
     for i, col in enumerate(media_cols):
         ad = apply_adstock(X[col].values, betas[i])
         sat = saturation_transform(ad, alphas[i])
         X_transformed.append(sat)
     X_media = np.array(X_transformed).T
-    X_extra = X.drop(columns=media_cols).values
     X_all = np.concatenate([X_media, X_extra], axis=1)
 
-    param_grid = {
-        "alpha": [0.01, 0.1, 1.0, 10.0],
-        "l1_ratio": [0.1, 0.5, 0.9]
-    }
-    elastic = ElasticNet(positive=True, max_iter=5000)
-    scorer = make_scorer(r2_score)
-    grid = GridSearchCV(estimator=elastic, param_grid=param_grid, scoring=scorer, cv=3)
-    grid.fit(X_all, y)
-    model = grid.best_estimator_
-    pred = model.predict(X_all)
+    elastic = ElasticNet(**best_params, positive=True, max_iter=5000)
+    elastic.fit(X_all, y)
+    pred = elastic.predict(X_all)
 
     return {
-        "model": model,
+        "model": elastic,
         "alphas": alphas,
         "betas": betas,
         "columns": media_cols,
         "extra_cols": extra_feature_cols,
-        "best_params": grid.best_params_
+        "best_params": best_params
     }, pd.Series(pred, index=X.index)
 
 # ▼ 評価関数
